@@ -20,18 +20,8 @@
 		],
 		"client": [
 			"com.baruc.brs.mobvariants.client.MobVariantsBRSClient"
-		],
-		"fabric-datagen": [
-			"com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator"
 		]
 	},
-	"mixins": [
-		"mob_variants_brs.mixins.json",
-		{
-			"config": "mob_variants_brs.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~26.1.2",
