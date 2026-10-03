@@ -2,6 +2,31 @@
 
 Status: **proposed, not implemented.** No source file has been changed.
 
+> ## ⚠ Superseded in part — read before using this document
+>
+> This document is **partially superseded**. It is retained as the original v1 proposal and as the
+> record of the rejected *Candidate A* design; it is **not** the implementation contract.
+>
+> - **The state-layer design in this document is superseded** by
+>   `.kilo/plans/1790996850927-variant-state-layer-architecture.md`. That document is the finalized
+>   Variant State Layer architecture. Its central change is the attachment contract: the entity
+>   attachment holds the **already-resolved texture `Identifier`** chosen by the server from
+>   `SERVER_DATA`, and the client performs **no** `variantId → VariantDefinition → texture`
+>   resolution — there is no client-side registry. §1.1, §1.2, §2, §3.2, §3.4, §3.5, §8.1, §8.3,
+>   §9.3–§9.6, §10, §11 and §12 of this document describe the earlier variant-id attachment and
+>   client-side `VariantRegistry` lookup and are **historical / proposed material only**.
+> - **The render-layer design is maintained separately** in
+>   `.kilo/plans/1790968433924-mob-variant-texture-rendering-plan.md`. Anything about client
+>   mixins, render-state transport, the interception point or render-side validation belongs there,
+>   not here. §1.1 (render column), §3.4, §6.2, §6.3, §7 (client tree), §11 task 10 and §12's client
+>   items are superseded by it.
+> - §0 (verified environment facts) and §0.1 (leftover-file cleanup list) remain accurate and are
+>   still usable; §5.1's verified-API table remains accurate.
+>
+> **Do not implement from this document.** Use the two plans named above as the contract. Any code
+> written against the state-layer sections here would reintroduce a client-side definition lookup
+> the finalized design deliberately removes.
+
 Scope note: this document defines the core layer only. Stat/balance/probability
 mathematics are explicitly **out of scope**; only the seams that will accept them
 later are defined.

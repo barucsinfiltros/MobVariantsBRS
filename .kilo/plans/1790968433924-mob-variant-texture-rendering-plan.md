@@ -19,21 +19,28 @@ Fabric API `0.155.3+26.1.2`, Java `25`, Loom `1.18-SNAPSHOT`, official Mojang ma
 vanilla living-entity renderer, using two client-only Mixins and one field on the vanilla render
 state.
 
-**Out of scope** — attachment/definition/registry/selection layers (decided in
-`1790903055742-mob-variants-brs-architecture.md` and `docs/DECISIONS.md`, not yet implemented),
-Gradle, dependencies, `EntityType`s, mob classes, custom renderers, render layers,
-`FabricRenderState` transport, networking, persistence, attribute application.
+**Out of scope** — the attachment/definition/snapshot/selection layers (owned by
+`1790996850927-variant-state-layer-architecture.md`, not yet implemented), Gradle, dependencies,
+`EntityType`s, mob classes, custom renderers, render layers, `FabricRenderState` transport,
+networking, persistence, attribute application.
 
-**Dependency on other phases.** This plan assumes the state layer exists and provides exactly
-this contract (from the approved architecture plan §1.2/§8 and D-011/D-018/R-007):
+**Dependency on other phase — the contract, as finalized.** The state-layer design is
+`1790996850927-variant-state-layer-architecture.md`; its §15.1 is the authoritative statement of
+what the render layer may consume. That contract supersedes the earlier
+"attachment → registry → texture" sketch this plan previously carried:
 
 ```
-Identifier variantId = entity.getAttached(VariantAttachments.VARIANT);   // AttachmentType<Identifier>
-Identifier texture   = VariantRegistry.get(variantId).texture();           // precomputed at reload
+Identifier texture = entity.getAttached(VariantAttachments.VARIANT_TEXTURE);   // AttachmentType<Identifier>
 ```
 
-Nothing else from that layer is used. If those two lookups do not exist yet, this phase must wait
-for them; it does not re-implement them.
+The attachment holds the **already-resolved texture `Identifier`** the server chose for that entity.
+Nothing else from the state layer is used:
+
+- there is **no** client-side `VariantRegistry`, no definition lookup, and no id → texture step;
+- `null` (no attachment) is the only no-variant case;
+- the resolved value is self-contained, so a removed or changed definition cannot strand a mob.
+
+If that attachment read does not exist yet, this phase must wait for it; it does not re-implement it.
 
 ---
 
@@ -204,9 +211,7 @@ EntityRenderDispatcher#extractEntity → EntityRenderer#createRenderState(T,floa
 Preserved unchanged:
 
 ```
-Entity attachment (variant id)
-  → variant definition (reload-built registry)
-  → precomputed texture Identifier
+Entity attachment (already-resolved texture Identifier)
   → LivingEntityRenderState custom field
   → LivingEntityRenderer#getRenderType
   → variant texture OR the renderer's original texture
@@ -222,25 +227,27 @@ during rendering, no attachment lookup during rendering.
 |---|---|---|
 | 1 | Render-state field representation | One `@Unique private @Nullable Identifier mobVariants$variantTexture;` added to `LivingEntityRenderState` by a Mixin, exposed through a duck interface `MobVariantsRenderState` (getter + setter) that the same Mixin `implements`. Not `FabricRenderState`: its `setData` allocates a fastutil map on first write **even for `null`** (Fabric API `renderstate/RenderStateMixin`), which would allocate per rendered living entity per frame, and Fabric never calls `clearExtraData()` for entity render states. |
 | 2 | How server-authoritative selection reaches the client state | The already-synced attachment is read **once** at extraction (§5.3). Nothing is written client-side. |
-| 3 | Where the `Identifier` is resolved | In the state layer at reload (`VariantRegistry` holds precomputed texture `Identifier`s; R-007). Zero string work, zero `Identifier` construction on the render path. |
+| 3 | Where the `Identifier` is resolved | **On the server, once per spawn**, inside the state layer's `ENTITY_LOAD` callback (`variantId → VariantDefinition → texture`, per `1790996850927` §5.2/§9.2). The client receives the resolved value through the synced attachment. Zero string work, zero `Identifier` construction, and zero registry reads on the render path. |
 | 4 | Where the field is assigned | The `@Inject` at `extractRenderState` HEAD, unconditionally, including `null` — so a stale value is impossible even if render-state allocation ever changes. |
 | 5 | How the renderer obtains variant-or-original | The `@Redirect` returns the stored variant when non-null, else the shadowed `getTextureLocation(state)`. |
 | 6 | Exact bytecode interception point | §2. |
 | 7 | Exact Mixin mechanism + handler contract | §4. |
 | 8 | Fallback when no variant exists | Field is `null` → redirect returns the renderer's own texture. Byte-for-byte vanilla behaviour. |
-| 9 | Entity without a MobVariantsBRS attachment | `getAttached` returns `null` → same fallback as #8. |
-| 10 | Null variant texture values | A definition whose texture is absent/unresolvable resolves to `null` at reload → stored `null` → vanilla fallback (D-020). |
+| 9 | Entity without a MobVariantsBRS attachment | `getAttached` returns `null` → same fallback as #8. This is the **only** no-variant case: the state layer resolves the texture on the server, so the client never receives an unresolvable value. |
+| 10 | Null variant texture values | An absent attachment resolves to `null` and is stored unchanged → vanilla fallback (the outcome D-020 asks for, reached structurally). A texture-less definition cannot reach the client: the state layer rejects it at load (`1790996850927` §6.3, R-011), so no second null path exists. |
 | 11 | Client/server separation | All new files under `src/client/java/…/client/` and registered only in the `"client"` array of `mob_variants_brs.client.mixins.json`; the common mixin config is untouched. Dedicated servers never load them. |
 
 ### 5.2 Per-frame cost (one rendered living entity)
 
 | Step | Cost |
 |---|---|
-| `entity.getAttached(VARIANT)` (extraction only) | 1 attachment lookup |
-| `VariantRegistry.get(id)` (extraction only, only if id non-null) | 1 immutable-map lookup |
+| `entity.getAttached(VARIANT_TEXTURE)` (extraction only) | **1 attachment lookup — the only lookup on this path** |
 | Store to render-state field | 1 reference store |
 | Redirect read | 1 null check |
 | Anything during `submit` / `getRenderType` beyond that | **nothing** |
+
+The `VariantRegistry.get(id)` row this table used to carry is **deleted**: there is no id, no
+registry, and nothing to resolve — the attachment value *is* the texture.
 
 No allocation is introduced: the stored value is either `null` or an already-interned
 `Identifier`; the redirect returns either the stored reference or the renderer's own.
@@ -263,7 +270,8 @@ src/client/java/com/baruc/brs/mobvariants/client/mixin/LivingEntityRenderStateMi
 src/client/java/com/baruc/brs/mobvariants/client/mixin/LivingEntityRendererMixin.java
         @Shadow getTextureLocation; @Inject extractRenderState HEAD (write);
         @Redirect getRenderType → getTextureLocation (read/substitute);
-        the two-lookup resolve helper from §1 (attachment → registry → precomputed Identifier).
+        the resolve helper from §1 — a single attachment read of the already-resolved
+        texture Identifier (no registry, no definition, no second lookup).
 ```
 
 Modify:
@@ -288,8 +296,9 @@ non-mixin helper lives in `…client.render`. No `src/main` change, no resource 
 3. Implement `LivingEntityRendererMixin` with exactly the two injectors and the one `@Shadow`
    specified in §4 — no third injection point, no logger, no flags.
 4. Register both mixins in `mob_variants_brs.client.mixins.json`.
-5. Wire the resolve helper to the state-layer contract in §1 (variant id → precomputed texture
-   `Identifier`), reusing the existing registry — do not re-read datapacks.
+5. Wire the resolve helper to the state-layer contract in §1 — **one attachment read** that yields
+   the already-resolved texture `Identifier`. Do not re-read datapacks, do not look up a variant id,
+   do not add a client-side registry; there is nothing left to resolve.
 6. Update `docs/DECISIONS.md` / `docs/ARCHITECTURE.md` / `docs/ROADMAP.md` / `docs/TESTING.md`
    rows that state "exactly one client mixin" or "target method UNVERIFIED" (D-015, D-016,
    ROADMAP P-1, ARCHITECTURE §15.3/§15.5).
@@ -300,11 +309,14 @@ non-mixin helper lives in `…client.render`. No `src/main` change, no resource 
 
 | Situation | Field | Redirect returns | Result |
 |---|---|---|---|
-| Entity has a MobVariantsBRS variant with a resolvable texture | variant `Identifier` | variant `Identifier` | variant texture; translucency/outline/invisibility unchanged |
-| Entity has a variant whose texture is absent or unresolvable | `null` | renderer's own texture | vanilla; no crash; no log |
-| Entity has no MobVariantsBRS attachment | `null` | renderer's own texture | vanilla |
+| Entity has a MobVariantsBRS variant with a resolved texture | variant `Identifier` (as received from the attachment) | variant `Identifier` | variant texture; translucency/outline/invisibility unchanged |
+| Entity has no MobVariantsBRS attachment | `null` | renderer's own texture | vanilla; no crash; no log |
 | Non-living entity / non-living renderer | n/a | n/a | untouched — the Mixins target living renderers only |
 | Mixin fails to apply on a future MC version | `null` or absent | renderer's own texture | silent degradation; **no custom diagnostic added** (§10) |
+
+The former "variant whose texture is absent or unresolvable" row is **deleted**: it is unreachable.
+The texture is resolved on the server before it is ever attached, and a texture-less definition is
+rejected at load, so "no attachment" is the only no-variant path.
 
 `require = 0` is retained on both injectors per D-017, so a rename degrades to vanilla instead of
 hard-failing a client launch. Because that failure is silent, §13 requires the client test to
@@ -362,10 +374,10 @@ neither the client source set nor the client mixin config.
 
 ## 12. Performance invariants (must survive review)
 
-No per-tick work; exactly one attachment read and at most one registry read per rendered living
-entity per frame, both at extraction; zero attachment reads and zero datapack reads during
-submission; zero per-frame allocation; no per-renderer global state; no `RenderType` construction
-beyond vanilla (only the `Identifier` handed to vanilla differs).
+No per-tick work; **exactly one attachment read per rendered living entity per frame**, at
+extraction, and **zero registry reads** (no client registry exists); zero attachment reads and zero
+datapack reads during submission; zero per-frame allocation; no per-renderer global state; no
+`RenderType` construction beyond vanilla (only the `Identifier` handed to vanilla differs).
 
 ---
 
@@ -389,11 +401,12 @@ beyond vanilla (only the `Identifier` handed to vanilla differs).
 
 | ID | Current | New |
 |---|---|---|
+| D-011 | Attachment holds the canonical variant `Identifier`; client resolves it to a texture | **Amended** (by `1790996850927` §5): the attachment holds the **already-resolved texture** `Identifier`. This plan consumes it with one read and performs no resolution. |
 | D-015 | "Zero server-side mixins; **exactly one** client-side mixin" | Still zero server-side mixins; **two** client mixins — one transport field on `LivingEntityRenderState`, one behavioural mixin on `LivingEntityRenderer` |
 | D-016 | "Client mixin target method UNVERIFIED for 26.1.2" | **Resolved**: interception is `INVOKEVIRTUAL LivingEntityRenderer.getTextureLocation(LivingEntityRenderState)Identifier` inside `getRenderType`; the transport write is at `extractRenderState` HEAD |
 | D-017 | `require = 0` + one warning, "open choice" | `require = 0` **retained** on both injectors; the "one warning" half is dropped — no diagnostic mechanism was found that is both verified and off the hot path, so none is invented |
-| D-020 | Unknown variant id → vanilla | Unchanged, and now realised as: resolve to `null` at extraction, store `null` |
-| R-005 / R-007 | No second attachment; precomputed `Identifier` | Unchanged and honoured by the render path |
+| D-020 | Unknown variant id → vanilla | **Re-based**: the outcome is unchanged and now reached structurally. An unknown id never reaches the client (the server resolves it); the only no-variant case is an absent attachment, which resolves to `null` at extraction and stores `null`. |
+| R-005 / R-007 | No second attachment; precomputed `Identifier` | R-005 **still holds** — there is still exactly one attachment, and the resolved texture is that attachment's payload rather than a second one. R-007 (precomputed `Identifier`) **honoured**: the value is computed once per spawn on the server, so the render path does no string or `Identifier` work. |
 
 ---
 
@@ -435,4 +448,10 @@ beyond vanilla (only the `Identifier` handed to vanilla differs).
 
 No Java implemented or modified; no mixin config, resource, Gradle, or `docs/` file changed; no
 dependency added; no diagnostic infrastructure invented; no unrelated class renamed or refactored;
-no build run. The only artefact produced by this task is this plan file.
+no build run. The only artefact produced by that task is this plan file.
+
+**Later amendment.** A subsequent documentation-only task rewired §1, §5, §5.1 #3/#9/#10, §5.2, §6,
+§7 task 5, §8, §12 and §14 onto the finalized state-layer contract of
+`1790996850927-variant-state-layer-architecture.md` (resolved texture in the attachment; no
+client-side registry). It changed plan text only. Nothing in §2, §4, §5.1 #1, §9, §10, §13 or §15
+was touched, so every verified mechanism, open gate and validation item below stands as written.
