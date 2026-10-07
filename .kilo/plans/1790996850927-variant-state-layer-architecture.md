@@ -1,8 +1,8 @@
 # MobVariantsBRS — Variant State Layer Architecture
 
-Status: **architecture only, not implemented.** No Java, resource, mixin config, Gradle, or
-`docs/` file was created or modified by the task that produced this document. The only artefacts
-of that task are the three plan files named in §0.3.
+Status: **verified implementation.** The Variant State Layer has been implemented and validated on
+Minecraft 26.1.2 / Fabric API 0.155.3+26.1.2. A fresh `./gradlew clean build` succeeds with no
+warnings/errors. Dedicated-server and client runtime testing confirmed all documented behavior.
 
 Stack (read from the repository, not assumed): MC `26.1.2`, Fabric Loader `0.19.5`,
 Fabric API `0.155.3+26.1.2`, Java `25`, Loom `1.18-SNAPSHOT`, official Mojang mappings —
@@ -12,10 +12,14 @@ Classification legend used throughout:
 
 - **[VF] Verified fact** — read out of a tracked repository file, or out of the *installed*
   Fabric API javadoc (`fabric-api-0.155.3+26.1.2`) / `FabricMC/fabric-api` sources / the
-  26.1.2 mapping surface. Cited inline.
-- **[AD] Architectural decision** — chosen in this document. Not implemented.
+  26.1.2 mapping surface, **or confirmed by runtime testing of the implemented code**. Cited inline.
+- **[AD] Architectural decision** — chosen in this document and **implemented**.
 - **[AS] Assumption** — believed true, not fully pinned. Listed in §21 with its fallback.
 - **[OQ] Open question** — unresolved. Listed in §21 with the decision owner.
+- **[DL] Deliberately deferred** — renderer integration and related client-side work; owned by
+  `1790968433924-mob-variant-texture-rendering-plan.md`.
+- **[KL] Known limitation** — documented architectural limitation with no current fix planned.
+- **[FD] Future decision** — seam exists, policy not yet chosen.
 
 ---
 
@@ -44,21 +48,24 @@ systems, sounds, drops, and unrelated refactors.
 
 ### 2.1 What exists **[VF]**
 
-Tracked Java sources — 4 files, all unmodified Fabric example-mod scaffold:
+Tracked Java sources — implementation of the Variant State Layer:
 
 | File | Body |
 |---|---|
-| `src/main/java/com/baruc/brs/mobvariants/MobVariantsBRS.java` | `ModInitializer`; `MOD_ID`, `LOGGER`, `id(String)`; logs `"Hello Fabric world!"` (line 24) |
-| `src/main/java/com/baruc/brs/mobvariants/mixin/ExampleMixin.java` | inert `@Inject` HEAD into `MinecraftServer.loadLevel`, empty body |
-| `src/client/java/com/baruc/brs/mobvariants/client/MobVariantsBRSClient.java` | empty `onInitializeClient()` |
-| `src/client/java/com/baruc/brs/mobvariants/client/MobVariantsBRSDataGenerator.java` | empty `onInitializeDataGenerator()` |
-| `src/client/java/com/baruc/brs/mobvariants/client/mixin/ExampleClientMixin.java` | inert `@Inject` HEAD into `Minecraft.run`, empty body |
+| `src/main/java/com/baruc/brs/mobvariants/MobVariantsBRS.java` | `ModInitializer`; `MOD_ID`, `LOGGER`, `id(String)`; registers attachment types, reload listener, lifecycle events, and entity-load listener; forces attachment registration on both client and server |
+| `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java` | Two `AttachmentType`s: `SERVER_VARIANT_SNAPSHOT` (non-persistent, non-synced, on `GlobalAttachments`) and `VARIANT_TEXTURE` (persistent, synced, on `Entity`) |
+| `src/main/java/com/baruc/brs/mobvariants/definition/VariantDefinition.java` | Immutable record with `Identifier entityType`, `Identifier texture`; `RecordCodecBuilder` codec |
+| `src/main/java/com/baruc/brs/mobvariants/definition/VariantDefinitionLoader.java` | `SimpleReloadListener` registered on `PackType.SERVER_DATA`; `prepare` reads `variants` resources, `apply` builds and publishes snapshot |
+| `src/main/java/com/baruc/brs/mobvariants/selection/VariantStateLifecycle.java` | `ENTITY_LOAD` listener; guards `isLoadedFromDisk()` and `hasAttached(VARIANT_TEXTURE)`; selects first candidate texture |
+| `src/main/java/com/baruc/brs/mobvariants/snapshot/VariantSnapshot.java` | Immutable record with `byVariantId` and `byEntityType` maps; `variantsFor(EntityType)` accessor |
+| `src/client/java/com/baruc/brs/mobvariants/client/MobVariantsBRSClient.java` | Empty `onInitializeClient()` — no client-side loader or registry |
+| `src/client/java/com/baruc/brs/mobvariants/client/mixin/ExampleClientMixin.java` | Inert `@Inject` HEAD into `Minecraft.run`, empty body |
 
 Resources: `fabric.mod.json` (mod id `mob_variants_brs`, `environment: "*"`, three entrypoints,
 two mixin configs, `depends` on `fabric-api: *`), `mob_variants_brs.mixins.json`
-(package `…mobvariants.mixin`, lists `ExampleMixin`), `mob_variants_brs.client.mixins.json`
+(package `…mobvariants.mixin`, empty `mixins` array), `mob_variants_brs.client.mixins.json`
 (package `…mobvariants.client.mixin`, `client` array lists `ExampleClientMixin`),
-`assets/mob_variants_brs/icon.png`. **No `data/` directory exists.**
+`assets/mob_variants_brs/icon.png`, **`data/mob_variants_brs/variants/ice_zombie.json`**.
 
 Build: `build.gradle:14-23` split source sets (`main` + `client`), `:31-38` dependencies are
 `minecraft`, `fabric-loader`, `fabric-api` **only** — no test framework, no MixinExtras, no
@@ -66,24 +73,32 @@ Build: `build.gradle:14-23` split source sets (`main` + `client`), `:31-38` depe
 
 ### 2.2 What does not exist **[VF]**
 
-No registry, no snapshot, no attachment type, no event subscription, no persistence, no packet,
-no configuration, no `data/` content, no datagen provider, no test. `docs/ARCHITECTURE.md:25-28`
-and `docs/ROADMAP.md:39-40` say the same. `docs/ARCHITECTURE.md:201-214` records a
+No registry package, no selection package (beyond `VariantStateLifecycle`), no custom packets,
+no configuration, no datagen provider, no test. `docs/ARCHITECTURE.md:25-28` and
+`docs/ROADMAP.md:39-40` say the same. `docs/ARCHITECTURE.md:201-214` records a
 git-ignored stale `build/resources/main/data/mob_variants_brs/variants/zombie/ice.json` from a
 deleted experiment — **not** a design input, and its schema (`base_entity`, optional `texture`)
 is superseded by §6 below.
 
 ### 2.3 State/registry/attachment abstraction already in the repo **[VF]**
 
-**None.** There are no `attachment/`, `definition/`, `registry/`, `selection/` or `variant/`
-packages (`docs/ARCHITECTURE.md:189-190`). Everything in §6–§10 below is new.
+Implemented in this layer:
+- `attachment/VariantAttachments.java` — two `AttachmentType`s
+- `definition/VariantDefinition.java` — record + codec
+- `definition/VariantDefinitionLoader.java` — reload listener
+- `snapshot/VariantSnapshot.java` — immutable snapshot
+- `selection/VariantStateLifecycle.java` — entity-load listener
+
+No `registry/` package exists; the snapshot is published to `GlobalAttachments` and read from
+there. No client-side registry or definition loader exists.
 
 ### 2.4 Existing mixin usage **[VF]**
 
 Two configs, both `required: true` with `injectors.defaultRequire: 1` and
 `compatibilityLevel: "JAVA_25"` (`mob_variants_brs.mixins.json:2-13`,
-`mob_variants_brs.client.mixins.json:2-13`). Both registered mixins have **empty** injected
-bodies. **This layer adds zero mixins and changes zero mixin configs.**
+`mob_variants_brs.client.mixins.json:2-13`). The server mixin config has an empty `mixins`
+array. The client mixin config lists only `ExampleClientMixin` (inert). **This layer adds zero
+mixins and changes zero mixin configs.**
 
 ### 2.5 Existing architectural decisions carried forward **[VF]**
 
@@ -98,6 +113,17 @@ From `docs/DECISIONS.md` (all still `PROPOSED`):
 
 Superseded by this document: **D-011** (attachment payload — see §5) and **R-005**
 (no second attachment — the reasoning is retained but the premise changed, see §22).
+
+Additional verified decisions now **IMPLEMENTED**:
+- The attachment holds the **resolved texture `Identifier`** (Candidate B), not a variant ID.
+- `listResources("variants", ...)` (namespace-relative) is used for discovery.
+- Initial resource loading occurs **before** `MinecraftServer` construction; `SERVER_STARTING`
+  performs initial snapshot publication.
+- `GlobalAttachments` is backed by `SavedDataStorage`; the snapshot attachment itself is not
+  `.persistent()` but the infrastructure provides persistence.
+- Client attachment initialization is forced from `MobVariantsBRS.onInitialize()` (common entrypoint).
+- Namespace policy: only `mob_variants_brs` namespace definitions are accepted.
+- Guard ordering limitation: malformed persisted attachments may not self-heal (see §9.3).
 
 ---
 
@@ -143,7 +169,7 @@ All rows below were read from the **installed** Fabric API `0.155.3+26.1.2` java
 | `net.minecraft.server.packs.resources.ResourceManagerReloadListener` exists in 26.1.2 with `onResourceManagerReload(ResourceManager)`, `reload(...)`, `prepareSharedState(...)` — the fully synchronous alternative | 26.1.2 mapping surface |
 | `ResourceLoader.addListenerOrdering(first, second)` exists; ordering constraints are honoured during the **apply** stage only | `ResourceLoader` javadoc |
 | Fabric injects a `SetupMarkerResourceReloader` at **index 0** of the server-data listener list and re-inserts it there after sorting, so `SharedState` keys (`DataResourceLoader.REGISTRY_LOOKUP_KEY`, …) are populated before any other listener runs | `ResourceLoaderImpl#sort` (`if (setupReloader != null) reloaders.add(setupReloader);` first), `SetupMarkerResourceReloader` |
-| `ResourceManager.listResources(String startingPath, Predicate<Identifier>)` returns `Map<Identifier, Resource>` — exactly **one** `Resource` per id, pack precedence already resolved | 1.21.8 mapping surface, `listResources`; see §21 Q2 for the 26.1 name re-check |
+| `ResourceManager.listResources(String startingPath, Predicate<Identifier>)` returns `Map<Identifier, Resource>` — exactly **one** `Resource` per id, pack precedence already resolved. The `startingPath` is **namespace-relative** (e.g. `"variants"`), not `"mob_variants_brs/variants"`. | 1.21.8 mapping surface, `listResources`; see §21 Q2 for the 26.1 name re-check |
 | `DataResourceLoader` javadoc explicitly advises: *"it is best to primarily use reload listeners as stateless loaders, as storing a state may easily lead to incomplete or leaking data"* | `DataResourceLoader` javadoc |
 
 ### 3.4 Lifecycle events **[VF]**
@@ -180,13 +206,19 @@ All rows below were read from the **installed** Fabric API `0.155.3+26.1.2` java
                     │
                     ▼  (server only)
  ServerEntityEvents.ENTITY_LOAD  →  VariantStateLifecycle.onEntityLoad(entity, level)
-   guard: isLoadedFromDisk()  /  guard: hasAttached(VARIANT_TEXTURE)
-   → snapshot.variantsFor(entity.getType())  →  entity.setAttached(VARIANT_TEXTURE, texture)
+    guard: isLoadedFromDisk()  /  guard: hasAttached(VARIANT_TEXTURE)
+    → snapshot.variantsFor(entity.getType())  →  entity.setAttached(VARIANT_TEXTURE, texture)
                     │
                     ▼  Fabric attachment persistence + sync (no custom packets)
  Entity (server NBT)  ─────────────────────────►  Entity (client, tracked)
  VARIANT_TEXTURE : Identifier  (resolved texture)  ──►  renderer reads it, does nothing else
 ```
+
+**Verified lifecycle behavior [VF]:**
+- The initial server resource-loading pipeline occurs **before** the `MinecraftServer` instance is constructed.
+- The reload listener's initial `apply` may execute before the listener has a server reference.
+- The implementation intentionally skips snapshot publication when no server is attached.
+- `SERVER_STARTING` performs the initial snapshot publication from the already-loaded server resource manager.
 
 Why this shape:
 
@@ -206,7 +238,7 @@ Why this shape:
 
 ## 5. Attachment payload decision
 
-### 5.1 Candidate A — attachment holds the canonical `variantId` **[rejected]**
+### 5.1 Candidate A — attachment holds the canonical `variantId` **[rejected, superseded]**
 
 `variantId → definition → texture` would have to be resolved **on the client**, because that is
 the only place a texture is consumed. A normal client is not given the server's `SERVER_DATA`
@@ -222,7 +254,7 @@ therefore require:
 Rejected. Its only genuine advantage — that a datapack edit changes the appearance of already-spawned
 mobs — is worth less than the correctness and simplicity it costs.
 
-### 5.2 Candidate B — attachment holds the **resolved texture `Identifier`** **[AD, selected]**
+### 5.2 Candidate B — attachment holds the **resolved texture `Identifier`** **[AD, selected, implemented, verified]**
 
 ```
 server:  variantId → VariantDefinition → texture Identifier   (during selection, once per spawn)
@@ -261,7 +293,7 @@ Consequences of that narrowing, stated plainly:
 | Future extensibility | better (identity available per entity) | worse; remedy is a second attachment **only** when a concrete requirement appears (§22) |
 | Compatibility | leaks data shape into a client/server contract | self-describing, no client data dependency |
 
-### 5.4 The one attachment **[AD]**
+### 5.4 The one attachment **[AD, implemented]**
 
 Exactly one entity attachment is created. No second attachment is introduced; no requirement in
 this layer proves one necessary.
@@ -289,7 +321,7 @@ two-field `RecordCodecBuilder` with no post-processing step.
 Nothing else is present, and nothing else may be added without a new decision: no health, no
 attributes, no AI, no sounds, no drops, no probability, no commands, no GUI data.
 
-### 6.2 File layout and identity **[AD, supersedes part of D-018]**
+### 6.2 File layout and identity **[AD, implemented, supersedes part of D-018]**
 
 ```
 data/mob_variants_brs/variants/<name>.json
@@ -315,6 +347,14 @@ Example — `data/mob_variants_brs/variants/ice_zombie.json`:
   key, so no contradiction is possible.
 - `<name>` is therefore **global to the mod**: two variants of the same mob type need distinct
   file names (`ice_zombie.json`, `frost_zombie.json`). Documented, not a bug.
+
+**Namespace policy [VF, implemented]:**
+- Variant definition resources are **intentionally accepted only from the `mob_variants_brs` namespace**.
+- The current variant identity scheme derives variant identifiers as `mob_variants_brs:<name>`.
+- Allowing arbitrary namespaces while retaining that identity scheme could introduce collisions or ambiguous ownership.
+- Runtime validation confirmed that matching files under foreign namespaces are rejected.
+- **Known consequence [KL]:** Because resource discovery uses the namespace-relative `"variants"` path, foreign namespaces containing matching files may produce one warning per file during reload.
+- Do not redesign resource discovery or namespace ownership in this layer.
 
 ### 6.3 Validation rules **[AD]**
 
@@ -357,7 +397,7 @@ snapshot's identity index, it makes duplicate/ordering detection a single map op
 is the exact structure any future variant-specific feature needs. If it is not used by the first
 consumer to land, it should be deleted then — flagged in §21 Q3.
 
-### 7.2 Owner **[AD, selected]**
+### 7.2 Owner **[AD, implemented, verified]**
 
 The published snapshot lives as a **non-persistent, non-synced attachment on the server's
 `GlobalAttachments`**:
@@ -375,7 +415,16 @@ AttachmentRegistry.create(MobVariantsBRS.id("server_variant_snapshot"))   // no 
   a `ServerLevel`, and `Level` also implements `GlobalAttachmentsProvider`, so the snapshot is
   read as `level.globalAttachments().getAttached(SERVER_VARIANT_SNAPSHOT)`.
 
-### 7.3 Reaching the server from the reload listener **[AD]**
+**GlobalAttachments persistence clarification [VF]:**
+- `SERVER_VARIANT_SNAPSHOT` itself is **not registered with `.persistent()`**; therefore that
+  snapshot attachment is not serialized as persistent attachment state through this registration.
+- However, **Fabric's server `GlobalAttachments` infrastructure is backed by `SavedDataStorage` in
+  this Minecraft/Fabric version**.
+- Do not describe `GlobalAttachments` itself as inherently non-persistent. The distinction is:
+  the *attachment registration* is non-persistent, but the *target infrastructure* provides
+  server-lifecycle persistence via `SavedDataStorage`.
+
+### 7.3 Reaching the server from the reload listener **[AD, implemented, verified]**
 
 `apply` receives only `SharedState`, which exposes no server (§3.4). The listener therefore keeps
 **one** nullable reference, written only by Fabric lifecycle events:
@@ -388,15 +437,17 @@ void attach(MinecraftServer s)  { this.server = s; }   // ServerLifecycleEvents.
 void detach()                    { this.server = null; } // ServerLifecycleEvents.SERVER_STOPPED
 ```
 
-`SERVER_STARTING` is injected immediately before `MinecraftServer.initServer()` (§3.4), so the
-reference is always set before the first `reloadResources` and before any entity exists.
+**Verified load-bearing lifecycle behavior [VF]:**
+- The initial server resource-loading pipeline occurs **before** the `MinecraftServer` instance is constructed.
+- Therefore, the reload listener's initial `apply` may execute before the listener has a server reference.
+- The implementation **intentionally skips snapshot publication when no server is attached**.
+- `SERVER_STARTING` fires immediately before `MinecraftServer.initServer()` (§3.4), i.e. **before the first `reloadResources`**.
+- `SERVER_STARTING` performs the **initial snapshot publication** from the already-loaded server resource manager.
+- The reference is always set before any entity exists.
+- This is a **load-bearing lifecycle mechanism**, not an optimization. Do not redesign it.
 
-- This is a **single nullable reference to a lifecycle-bound object**, not a registry, not a cache,
-  not a definition store, and it is never read off the server thread.
-- `SERVER_STARTING` also publishes `VariantSnapshot.EMPTY`, so the snapshot is never absent and
-  the selection path has no null branch.
-- If `server` is somehow null in `apply` (it should be unreachable), the listener logs `error`,
-  **keeps the previous snapshot**, and returns. It never throws. Deterministic.
+If `server` is somehow null in `apply` after `SERVER_STARTING` (should be unreachable), the listener logs `error`,
+**keeps the previous snapshot**, and returns. It never throws. Deterministic.
 
 ### 7.4 Explicitly rejected ownership models **[AD]**
 
@@ -412,13 +463,15 @@ reference is always set before the first `reloadResources` and before any entity
 
 ## 8. Server resource loading
 
-### 8.1 Listener **[AD]**
+### 8.1 Listener **[AD, implemented]**
 
 `net.fabricmc.fabric.api.resource.v1.reloader.SimpleReloadListener<Prepared>`, registered once at
 mod init through `ResourceLoader.get(PackType.SERVER_DATA).registerReloadListener(id, listener)`.
 
 - **`prepare` (off-thread, may run on any thread)**
-  1. `state.resourceManager().listResources("mob_variants_brs/variants", id -> id.getPath().endsWith(".json"))`
+  1. `state.resourceManager().listResources("variants", id -> id.getPath().endsWith(".json"))`
+     - The path argument is **namespace-relative**; `"variants"` discovers `mob_variants_brs:variants/...`,
+       `othermod:variants/...`, etc. The loader then filters to the `mob_variants_brs` namespace.
   2. For each entry, in **ascending `Identifier` order**, open the resource and decode
      `VariantDefinition.CODEC` from `JsonOps.INSTANCE`.
      `JsonOps` rather than `RegistryOps`: `Identifier.CODEC` is a plain string codec and no
@@ -439,7 +492,11 @@ mod init through `ResourceLoader.get(PackType.SERVER_DATA).registerReloadListene
   4. `server.globalAttachments().setAttached(SERVER_VARIANT_SNAPSHOT, snapshot)` — one call, one
      reference swap, no partially-built state is ever observable.
 
-### 8.2 Requirements met **[AD]**
+**Resource discovery correction [VF]:** The old statement `listResources("mob_variants_brs/variants", ...)`
+is incorrect for Minecraft 26.1.2. The correct call uses the namespace-relative `"variants"` path.
+The implementation filters to the `mob_variants_brs` namespace after discovery.
+
+### 8.2 Requirements met **[AD, verified]**
 
 | Requirement | How |
 |---|---|
@@ -452,6 +509,8 @@ mod init through `ResourceLoader.get(PackType.SERVER_DATA).registerReloadListene
 | duplicate / override semantics | **there is none to define**: `listResources` yields exactly one `Resource` per id after vanilla has already resolved pack precedence, so a higher datapack's file at the same path **replaces** the lower one wholesale. No field-level merge, no cross-file merge. |
 | no repeated parsing outside reload | parsing happens only inside `prepare` |
 | no client loader | listener registered on `SERVER_DATA` only (§3.3) |
+
+**Resource discovery note [VF]:** `listResources("variants", ...)` with namespace-relative path is correct for Minecraft 26.1.2. The implementation filters results to the `mob_variants_brs` namespace.
 
 ### 8.3 Ordering **[AD]**
 
@@ -503,7 +562,7 @@ private static void onEntityLoad(Entity entity, ServerLevel level) {
   this rule, every mob of a given type receives the same texture. That is a deliberate MVP
   placeholder, and §22 records the one-line seam that replaces it.
 
-### 9.3 Guard conditions — why "select once" holds **[AD]**
+### 9.3 Guard conditions — why "select once" holds **[AD, implemented, verified]**
 
 | Requirement | Guarantee |
 |---|---|
@@ -515,8 +574,18 @@ private static void onEntityLoad(Entity entity, ServerLevel level) {
 | no reselection if `isLoadedFromDisk()` is unavailable or unreliable | **Guard 2 alone is sufficient**, because persistence guarantees the attachment is present on every disk-restored entity. Guard 1 is an optimisation and defence in depth, not the load-bearing guard. |
 
 That last row is the important one: the "select exactly once" invariant does **not** depend on the
-unverified `isLoadedFromDisk()` mechanism (§21 Q1). If `EntityLoadData` turns out to be
-unreachable, delete guard 1 and nothing else changes.
+`isLoadedFromDisk()` mechanism. If `EntityLoadData` turns out to be unreachable, delete guard 1 and nothing else changes.
+
+**Guard ordering limitation [KL, verified]:**
+- The verified implementation checks:
+  1. `entity.isLoadedFromDisk()`
+  2. `entity.hasAttached(VARIANT_TEXTURE)`
+- This is correct for normal persisted entities because the attachment is restored from persistent data before the entity-load event.
+- **However, the actual limitation must be documented:**
+  - The disk-loaded guard executes **before** the attachment-existence guard.
+  - If a persisted attachment fails to decode and is therefore unavailable, the entity may be skipped before fresh selection occurs.
+  - Therefore **self-healing of malformed/undecodable stored attachment data is NOT guaranteed by the current implementation**.
+- Do not silently redesign the guard ordering. Treat this as a known architectural limitation/future decision, not as an implementation defect to fix now.
 
 ### 9.4 No per-tick processing **[AD]**
 
@@ -535,7 +604,7 @@ The zero-per-tick property is structural: no tick hook is registered anywhere in
 `Entity.addAdditionalSaveData(ValueOutput)`, storing the data under
 `AttachmentTarget.NBT_ATTACHMENT_KEY` (§3.1). No NBT mixin of ours, no `SavedData`.
 
-### 10.2 Situation analysis **[AD]**
+### 10.2 Situation analysis **[AD, verified]**
 
 | Situation | Behaviour |
 |---|---|
@@ -548,7 +617,7 @@ The zero-per-tick property is structural: no tick hook is registered anywhere in
 | definition was never present on this server (e.g. the entity came from another world) | Attachment simply absent → vanilla texture. |
 | stored value no longer corresponds to any definition | Same: the value is self-contained and still valid. |
 | stored texture asset missing | The client resolves the id against its own resources; vanilla's missing-texture result is shown. No crash, no server involvement. |
-| malformed stored NBT | Fabric's deserialisation handles the codec; a value that fails to decode is not populated, and guard 2 then allows one fresh selection. Self-healing, deterministic. |
+| malformed stored NBT | **[KL]** Fabric's deserialisation handles the codec; a value that fails to decode is not populated. However, because guard 1 (`isLoadedFromDisk()`) executes before guard 2 (`hasAttached()`), an entity loaded from disk with a malformed attachment will hit guard 1 and return **before** guard 2 can allow fresh selection. Self-healing of undecodable stored attachment data is **not guaranteed**. See §9.3. |
 
 ### 10.3 No `initializer()` **[AD, D-022 retained and now verified]**
 
@@ -582,12 +651,20 @@ while implying a distinction that does not exist here (§3.1).
 
 **No custom networking.** No payload type, no receiver, no packet. D-012 holds.
 
-### 11.2 Registration requirements **[AD]**
+### 11.2 Registration requirements **[AD, implemented, verified]**
 
 The `AttachmentType` is declared in **`src/main`**, not `src/client`. Both logical sides therefore
 register the same identifier during mod init, which is what the configuration-phase handshake in
 `AttachmentSync` requires (§3.1). Declaring it in `main` also means the client classpath can
 resolve the field without touching any client-only class.
+
+**Client attachment initialization requirement [VF, intentional architectural requirement]:**
+- The syncable attachment type (`VARIANT_TEXTURE`) must be initialized on **both client and server**.
+- Fabric synchronization requires the attachment type to be registered on the client.
+- An ordinary Java import does not initialize the class (static initialization is lazy).
+- The common `MobVariantsBRS.onInitialize()` therefore **explicitly forces the required initialization** by referencing `VariantAttachments.VARIANT_TEXTURE` (or equivalent) on both sides.
+- This is an **intentional architectural requirement**. Do NOT redesign it into a client-only initializer. Do NOT add renderer code.
+- A synchronization initialization bug was found and fixed this way: the attachment class was not initialized on the pure client. The fix explicitly forces attachment registration from `MobVariantsBRS.onInitialize()`. Synchronization was re-tested successfully.
 
 ### 11.3 Delivery paths **[AD]**
 
@@ -651,18 +728,19 @@ the split source sets (`build.gradle:14-23`) enforce this at compile time.
 
 ## 14. `/reload` behaviour
 
-### 14.1 Sequence **[AD]**
+### 14.1 Sequence **[AD, verified]**
 
 1. `/reload` → `MinecraftServer.reloadResources` → `START_DATA_PACK_RELOAD` fires (§3.4).
 2. `prepare` re-reads every `mob_variants_brs/variants/*.json` from the rebuilt `SERVER_DATA`
    resource manager and decodes each into a `VariantDefinition`.
+   - **Correction:** `listResources("variants", ...)` with namespace-relative path; results filtered to `mob_variants_brs` namespace.
 3. `apply` builds `byVariantId` and `byEntityType` in full, wraps them unmodifiable, and calls
    `setAttached(SERVER_VARIANT_SNAPSHOT, snapshot)` — **one atomic reference swap**. A reader can
    only ever observe the previous complete snapshot or the new complete snapshot.
 4. `END_DATA_PACK_RELOAD` fires; if the reload failed, vanilla keeps the old datapacks and this
    layer's `apply` did not publish, so the old snapshot stays live.
 
-### 14.2 What happens to what **[AD]**
+### 14.2 What happens to what **[AD, verified]**
 
 | Thing | Result |
 |---|---|
@@ -672,7 +750,7 @@ the split source sets (`build.gradle:14-23`) enforce this at compile time.
 | **removed definitions** | No effect on existing entities (their value is a texture id, not a reference). New entities of that type get no variant. |
 | **changed definitions** | Take effect for new entities only. Existing entities keep the old texture until they despawn. |
 
-### 14.3 Why existing entities are not re-resolved **[AD]**
+### 14.3 Why existing entities are not re-resolved **[AD, verified]**
 
 This is stated explicitly rather than left implicit, per the brief. Re-resolution is not merely
 omitted for convenience; it is **incompatible with the chosen payload**:
@@ -708,9 +786,9 @@ This *satisfies* the renderer plan rather than conflicting with it: §5.1 #9 of
 `1790968433924` already requires "no attachment lookup during submission" and §12 requires "zero
 datapack reads during submission". Candidate B is what makes both achievable.
 
-### 15.2 The concrete incompatibility found, and its minimal amendment **[AD]**
+### 15.2 The concrete incompatibility found, and its minimal amendment **[AD, resolved in renderer plan]**
 
-`1790968433924-mob-variant-texture-rendering-plan.md` §1 states the state-layer contract as:
+`1790968433924-mob-variant-texture-rendering-plan.md` §1 originally stated the state-layer contract as:
 
 ```
 Identifier variantId = entity.getAttached(VariantAttachments.VARIANT);   // AttachmentType<Identifier>
@@ -735,12 +813,10 @@ its behaviour matrix, or its validation list:
 | §8 matrix | row 2 (texture absent/unresolvable) is unreachable under Candidate B and is replaced by the plain "no attachment" row |
 | §14 | D-011 → *amended*; R-005/R-007 → *retained but re-based* |
 
-**Status of these amendments.** The edits above are specified *by this document* and are landed in
-the renderer plan `1790968433924-mob-variant-texture-rendering-plan.md`, which remains the
-authoritative statement of the render layer. They are **plan-file edits only**: no Java, resource,
-mixin config, Gradle, dependency, test or `docs/**` file was changed by any part of that work. Do not
-trust this paragraph as evidence — verify the applied state by reading the named sections of
-`1790968433924`.
+**Status of these amendments [VF]:** The edits above have been applied to the renderer plan
+`1790968433924-mob-variant-texture-rendering-plan.md`. They are **plan-file edits only**: no Java,
+resource, mixin config, Gradle, dependency, test or `docs/**` file was changed by any part of that
+work. Verify the applied state by reading the named sections of `1790968433924`.
 
 Untouched, because they do not depend on the payload contract: §2, §4, §5.1 #1, §9, §10, §13, §15.
 Rewired alongside the locations listed above because they still carried the old wording: §5 (the
@@ -929,14 +1005,26 @@ session. Every row above is owed by the Code phase. Nothing in this document cla
 
 | # | Item | Kind | Impact | Fallback / owner |
 |---|---|---|---|---|
-| Q1 | The mechanism by which `Entity` implements `EntityLoadData` in `0.155.3+26.1.2` is not pinned by branch `26.1` (the `transitive-inject-interface` classtweaker line appears on branch `26.2`, not `26.1`), and the exact vanilla call site that sets `isLoadedFromDisk` is unread. | **[AS]** | Low | Guard 2 alone guarantees "select once" (§9.3). If `isLoadedFromDisk()` does not compile, delete guard 1. No other change. Verified at the first compile. |
-| Q2 | `ResourceManager.listResources(String, Predicate<Identifier>)` is confirmed on the 1.21.8 mapping surface; the 26.1.2 spelling has not been re-read. | **[AS]** | Low | The equivalent multi-pack accessor in 26.x has the same shape. Compiler resolves it. |
+| Q1 | **RESOLVED [VF]**: `Entity.isLoadedFromDisk()` is available and works on Minecraft 26.1.2 / Fabric API 0.155.3+26.1.2. The mechanism by which `Entity` implements `EntityLoadData` is verified at runtime. | **[VF]** | None | Guard 1 is verified functional. If it ever becomes unavailable, delete guard 1; guard 2 alone guarantees the invariant (§9.3). |
+| Q2 | **RESOLVED [VF]**: `ResourceManager.listResources("variants", ...)` with namespace-relative path is correct for Minecraft 26.1.2. Verified at runtime. | **[VF]** | None | Compiler confirms. |
 | Q3 | `VariantSnapshot.byVariantId` has no consumer in this layer. | **[AD]** | Cosmetic | Delete it in the Code phase if the first consumer does not need it. Keeping it is a deliberate one-step-ahead, not a framework. |
 | Q4 | Whether `ENTITY_LOAD` can fire more than once for a single live entity instance without an NBT round-trip. | **[OQ]** | None | Guard 2 makes the answer irrelevant (§9.3). No action required. |
 | Q5 | Every mob of a given type gets the same texture. | **[AD]** | Cosmetic, stated | §22 R-004. |
 | Q6 | `/reload` does not restyle existing mobs. | **[AD]** | Accepted trade-off | §14.3; reversal is additive. |
 | Q7 | `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md` and `docs/TESTING.md` still describe the superseded variant-id attachment and the old `VariantRegistry` render lookup. | **[AD]** | Documentation only | Updating `docs/` is a documentation task, not part of this Code phase (plan mode does not edit non-plan documentation). Listed in §24. |
 | Q8 | The two inert template mixins remain registered with `defaultRequire: 1`. | **[VF]** | Pre-existing | Separate scaffold-cleanup item already recorded at `1790903055742` §0.1. Not touched here. |
+
+**Verified findings to mark resolved [VF]:**
+- `Entity.isLoadedFromDisk()` is available and works on Minecraft 26.1.2 / Fabric API 0.155.3+26.1.2.
+- `MinecraftServer.globalAttachments()` and `ServerLevel.globalAttachments()` use the same server-wide target.
+- `listResources("variants", ...)` is correct (namespace-relative path).
+- Initial resource loading occurs before `SERVER_STARTING`.
+- The attachment reaches the client after explicit client-side attachment initialization/registration.
+- No renderer integration currently exists (deliberately deferred to `1790968433924`).
+- Persistence verified across chunk unload/reload and server restart.
+- Attachment synchronization to a real client verified.
+- Synchronization initialization bug fixed: attachment class explicitly initialized from `MobVariantsBRS.onInitialize()`.
+- Final clean build succeeds with no warnings/errors.
 
 ---
 

@@ -20,6 +20,20 @@ loom {
 			sourceSet sourceSets.client
 		}
 	}
+
+	runs {
+		client {
+			// Minecraft 26.1.2 no longer accepts --server / --port: those arguments were
+			// removed in 1.20 (snapshot 23w14a) and replaced by Quick Play arguments.
+			// Passing --server/--port now produces "Completely ignored arguments" and the
+			// client never auto-connects. The replacement is:
+			//   --quickPlayMultiplayer <host:port>
+			// Enable with: ./gradlew runClient -PautoConnect=localhost:25565
+			if (project.hasProperty('autoConnect')) {
+				programArguments.add("--quickPlayMultiplayer=" + project.property('autoConnect'))
+			}
+		}
+	}
 }
 
 fabricApi {

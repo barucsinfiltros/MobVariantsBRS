@@ -180,3 +180,57 @@ Fabric API surfaces used by a future suite would have to be available from
 `build.gradle:31-38`, which currently declares only Minecraft, Fabric Loader, and Fabric
 API. Adding any test framework would be a dependency change and is outside the scope of
 this documentation task.
+
+---
+
+## 11. Runtime integration testing procedure
+
+Local server + client testing requires the client to auto-connect to the dedicated
+server. The launch arguments must match the target Minecraft version.
+
+### 11.1 The argument incompatibility (Minecraft 26.1.2)
+
+Minecraft removed the `--server` and `--port` launch arguments in snapshot **23w14a
+(1.20)**. They were replaced by the Quick Play argument family:
+
+| Obsolete (pre-1.20) | Replacement (1.20+) | Format |
+|---|---|---|
+| `--server localhost` | `--quickPlayMultiplayer localhost:25565` | `host:port` as a single value |
+| `--port 25565` | *(merged into the above)* | |
+| *(none)* | `--quickPlayPath quickPlay/log.json` | optional: logs the join |
+
+Passing the obsolete arguments to Minecraft 26.1.2 produces:
+```
+Completely ignored arguments: [--server, localhost, --port, 25565]
+```
+and the client starts in the main menu without connecting — the server sees no
+player-join event.
+
+### 11.2 Launching the client with auto-connect
+
+The `build.gradle` `loom.runs.client` block accepts an `autoConnect` Gradle property
+that injects `--quickPlayMultiplayer` (the correct argument for 26.1.2):
+
+```powershell
+# Start the server in one terminal:
+.\gradlew runServer
+
+# Then, in another terminal, launch the client connected to it:
+.\gradlew runClient -PautoConnect=localhost:25565
+```
+
+The server port is `25565` (set in `run/server.properties`, `server-port=25565`).
+RCON on port `25575` is available for issuing test commands without joining the game
+(`rcon_test.py` / `rcon_test.ps1`).
+
+### 11.3 Test session script
+
+`scripts/Run-TestSession.ps1` automates the above: it starts the server (optionally),
+waits for the `Done ...` readiness line in the log, then launches the client with
+`-PautoConnect`. Usage:
+
+```powershell
+.\scripts\Run-TestSession.ps1            # start server, wait, launch connecting client
+.\scripts\Run-TestSession.ps1 -NoClient   # start server only
+.\scripts\Run-TestSession.ps1 -NoServer   # launch client only (server already running)
+```

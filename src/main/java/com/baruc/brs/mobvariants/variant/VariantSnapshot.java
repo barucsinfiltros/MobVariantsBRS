@@ -1,0 +1,86 @@
+package com.baruc.brs.mobvariants.variant;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.baruc.brs.mobvariants.MobVariantsBRS;
+
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.EntityType;
+
+/**
+ * Immutable, complete index of the variant definitions currently loaded by the server.
+ *
+ * <p>A snapshot is published as a single reference on the running server's
+ * {@code GlobalAttachments}, so a reader only ever observes a fully built snapshot and the
+ * structure must never be mutated afterwards. The canonical constructor defensively copies both
+ * maps and every candidate list, so immutability holds even if a caller passes a mutable map.
+ *
+ * @param byVariantId path-derived variant id ({@code mob_variants_brs:<name>}) to definition
+ * @param byEntityType entity type to its definitions, in ascending variant id order
+ */
+public record VariantSnapshot(
+		Map<Identifier, VariantDefinition> byVariantId,
+		Map<EntityType<?>, List<VariantDefinition>> byEntityType) {
+
+	/** Snapshot published before any datapack has been read; every entity misses it. */
+	public static final VariantSnapshot EMPTY = new VariantSnapshot(Map.of(), Map.of());
+
+	public VariantSnapshot {
+		byVariantId = Map.copyOf(byVariantId);
+		Map<EntityType<?>, List<VariantDefinition>> copied = new LinkedHashMap<>();
+
+		for (Map.Entry<EntityType<?>, List<VariantDefinition>> entry : byEntityType.entrySet()) {
+			if (!entry.getValue().isEmpty()) {
+				copied.put(entry.getKey(), List.copyOf(entry.getValue()));
+			}
+		}
+
+		byEntityType = Map.copyOf(copied);
+	}
+
+	/** Never null and never allocating: the shared empty list is returned for unknown types. */
+	public List<VariantDefinition> variantsFor(EntityType<?> type) {
+		return byEntityType.getOrDefault(type, List.of());
+	}
+
+	/**
+	 * Validates the parsed definitions and builds an ordered snapshot.
+	 *
+	 * <p>Must be called on the game thread: it reads {@link BuiltInRegistries#ENTITY_TYPE}, which
+	 * is not safe to read from a reload preparation thread.
+	 *
+	 * <p>A definition whose {@code entity_type} is absent from the registry is logged and skipped
+	 * rather than defaulted. {@code BuiltInRegistries.ENTITY_TYPE} is a {@code DefaultedRegistry},
+	 * whose {@code getValue} silently substitutes the default entity for an unknown id, so the
+	 * non-defaulting {@code getOptional} lookup is required here.
+	 *
+	 * @param prepared parsed entries in ascending variant id order, as produced by the reload listener
+	 */
+	public static VariantSnapshot build(List<Map.Entry<Identifier, VariantDefinition>> prepared) {
+		Map<Identifier, VariantDefinition> byVariantId = new LinkedHashMap<>();
+		Map<EntityType<?>, List<VariantDefinition>> byEntityType = new LinkedHashMap<>();
+
+		for (Map.Entry<Identifier, VariantDefinition> entry : prepared) {
+			Identifier variantId = entry.getKey();
+			VariantDefinition definition = entry.getValue();
+
+			EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(definition.entityType())
+					.orElse(null);
+
+			if (entityType == null) {
+				MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown entity type {}",
+						variantId, definition.entityType());
+				continue;
+			}
+
+			byVariantId.put(variantId, definition);
+			byEntityType.computeIfAbsent(entityType, unused -> new ArrayList<>()).add(definition);
+		}
+
+		return new VariantSnapshot(byVariantId, byEntityType);
+	}
+}

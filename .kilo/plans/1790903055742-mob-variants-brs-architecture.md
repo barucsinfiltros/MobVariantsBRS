@@ -26,6 +26,17 @@ Status: **proposed, not implemented.** No source file has been changed.
 > **Do not implement from this document.** Use the two plans named above as the contract. Any code
 > written against the state-layer sections here would reintroduce a client-side definition lookup
 > the finalized design deliberately removes.
+>
+> **Superseded Candidate-A concepts (explicitly marked):**
+> - Canonical variant ID stored as the entity attachment (§1.2, §1.3, §2 step 5, §3.1, §3.2, §3.4, §3.5 row 9, §8.1, §8.3, §9.3–§9.6, §10, §11, §12)
+> - Client-side `VariantRegistry` (§1.1, §2 step 9, §3.2, §3.4, §3.5 row 9, §7 client tree, §11 task 10)
+> - `VariantSelector` / `FirstDefinitionSelector` (§7 selection/, §8.3, §11 task 7, §22 R-004)
+> - Per-render registry lookup (§3.4, §3.5 row 9)
+> - Client-side definition loading (§1.1, §2 step 2, §7 client tree, §11 task 10)
+> - Assumption that `/reload` automatically restyles existing entities (§2 step 4, §14, §22 R-010)
+> - Path layout `variants/<entity>/<name>.json` (§0.1, §8.1, §8.2)
+>
+> These concepts are **historical / superseded** and must not be implemented.
 
 Scope note: this document defines the core layer only. Stat/balance/probability
 mathematics are explicitly **out of scope**; only the seams that will accept them

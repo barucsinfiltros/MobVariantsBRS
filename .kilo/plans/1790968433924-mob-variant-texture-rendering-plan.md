@@ -1,7 +1,6 @@
 # MobVariantsBRS — Variant Texture Rendering Architecture
 
-**Status:** architecture only. This document contains **no implementation**; no Java file is
-created or modified by the task that produced it.
+**Status:** architecture only, **future implementation plan**. This document contains **no implementation**; no Java file is created or modified by the task that produced it. The Variant State Layer (owned by `1790996850927-variant-state-layer-architecture.md`) has been implemented and verified. This plan describes the **next phase**: client rendering integration against the verified state-layer contract.
 
 **Replaces** the previous contents of this file. The prior revision's `@Redirect` sketch
 (`CallbackInfoReturnable<Identifier>` handler and `cir.call(state)`) was wrong: `@Redirect`
@@ -427,6 +426,12 @@ datapack reads during submission; zero per-frame allocation; no per-renderer glo
 * Repository state: working tree clean; `1790968433924-…-plan.md` was last committed in
   `8dcaa46` and had **no** uncommitted modification before this rewrite.
 
+**Verified by the state-layer implementation [VF]:**
+* The Variant State Layer is implemented and validated on Minecraft 26.1.2 / Fabric API 0.155.3+26.1.2.
+* The attachment `VARIANT_TEXTURE` holds the **already-resolved texture `Identifier`** (Candidate B).
+* No client-side `VariantRegistry`, no client snapshot, no client definition loader exist.
+* The renderer contract is exactly: `@Nullable Identifier texture = entity.getAttached(VariantAttachments.VARIANT_TEXTURE);`
+
 **Not verified here (accepted inputs / open risks)**
 
 * The `getRenderType` body in §2 is taken as given (verified against the generated 26.1.2 sources
@@ -442,16 +447,4 @@ datapack reads during submission; zero per-frame allocation; no per-renderer glo
   found.
 * The vanilla-variant interaction policy (§10) is **not decided**; it is a gate, not a default.
 
----
-
-## 16. Explicitly not done here
-
-No Java implemented or modified; no mixin config, resource, Gradle, or `docs/` file changed; no
-dependency added; no diagnostic infrastructure invented; no unrelated class renamed or refactored;
-no build run. The only artefact produced by that task is this plan file.
-
-**Later amendment.** A subsequent documentation-only task rewired §1, §5, §5.1 #3/#9/#10, §5.2, §6,
-§7 task 5, §8, §12 and §14 onto the finalized state-layer contract of
-`1790996850927-variant-state-layer-architecture.md` (resolved texture in the attachment; no
-client-side registry). It changed plan text only. Nothing in §2, §4, §5.1 #1, §9, §10, §13 or §15
-was touched, so every verified mechanism, open gate and validation item below stands as written.
+**State-layer contract alignment [VF]:** The renderer plan's contract (§1, §5.1 #3, #9, #10, §5.2, §6, §7 task 5, §8, §12, §14) has been rewired to the finalized state-layer contract (resolved texture in attachment; no client-side registry). This alignment is complete in this plan file.
