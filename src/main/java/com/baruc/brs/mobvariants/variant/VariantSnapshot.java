@@ -7,9 +7,11 @@ import java.util.Map;
 
 import com.baruc.brs.mobvariants.MobVariantsBRS;
 
+import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.biome.Biome;
 
 /**
  * Immutable, complete index of the variant definitions currently loaded by the server.
@@ -58,9 +60,14 @@ public record VariantSnapshot(
 	 * whose {@code getValue} silently substitutes the default entity for an unknown id, so the
 	 * non-defaulting {@code getOptional} lookup is required here.
 	 *
+	 * <p>A definition whose {@code conditions.biomes} contains an unknown biome identifier is
+	 * logged and skipped. An empty {@code conditions} object or an empty {@code biomes} list is
+	 * treated as an authoring error and the definition is skipped.
+	 *
 	 * @param prepared parsed entries in ascending variant id order, as produced by the reload listener
+	 * @param biomeRegistry the biome registry for validating biome identifiers
 	 */
-	public static VariantSnapshot build(List<Map.Entry<Identifier, VariantDefinition>> prepared) {
+	public static VariantSnapshot build(List<Map.Entry<Identifier, VariantDefinition>> prepared, Registry<Biome> biomeRegistry) {
 		Map<Identifier, VariantDefinition> byVariantId = new LinkedHashMap<>();
 		Map<EntityType<?>, List<VariantDefinition>> byEntityType = new LinkedHashMap<>();
 
@@ -75,6 +82,29 @@ public record VariantSnapshot(
 				MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown entity type {}",
 						variantId, definition.entityType());
 				continue;
+			}
+
+			// Validate conditions if present
+			if (definition.conditions().isPresent()) {
+				VariantConditions conditions = definition.conditions().get();
+				if (conditions.isEmpty()) {
+					MobVariantsBRS.LOGGER.error("Skipping variant definition {}: empty conditions are not allowed",
+							variantId);
+					continue;
+				}
+
+				boolean hasInvalidBiome = false;
+				for (Identifier biomeId : conditions.biomes()) {
+					if (biomeRegistry.getOptional(biomeId).isEmpty()) {
+						MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown biome {}",
+								variantId, biomeId);
+						hasInvalidBiome = true;
+						break;
+					}
+				}
+				if (hasInvalidBiome) {
+					continue;
+				}
 			}
 
 			byVariantId.put(variantId, definition);

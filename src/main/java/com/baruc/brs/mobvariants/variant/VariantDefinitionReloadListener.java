@@ -19,6 +19,8 @@ import org.jetbrains.annotations.Nullable;
 import com.mojang.serialization.JsonOps;
 
 import net.minecraft.resources.Identifier;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.Resource;
@@ -75,7 +77,7 @@ public final class VariantDefinitionReloadListener
 
 		try {
 			server.globalAttachments().setAttached(VariantAttachments.SERVER_VARIANT_SNAPSHOT,
-					VariantSnapshot.build(load(server.getResourceManager())));
+					VariantSnapshot.build(load(server.getResourceManager()), server.registryAccess().lookupOrThrow(Registries.BIOME)));
 		} catch (Exception e) {
 			MobVariantsBRS.LOGGER.error("Failed to publish the startup variant snapshot; "
 					+ "variants stay inactive until the next reload.", e);
@@ -149,7 +151,7 @@ public final class VariantDefinitionReloadListener
 
 		try {
 			server.globalAttachments().setAttached(VariantAttachments.SERVER_VARIANT_SNAPSHOT,
-					VariantSnapshot.build(prepared));
+					VariantSnapshot.build(prepared, server.registryAccess().lookupOrThrow(Registries.BIOME)));
 		} catch (Exception e) {
 			MobVariantsBRS.LOGGER.error("Failed to publish the variant snapshot; "
 					+ "the previous snapshot remains in effect.", e);

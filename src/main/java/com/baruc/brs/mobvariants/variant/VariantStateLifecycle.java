@@ -9,6 +9,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.world.entity.Entity;
@@ -44,6 +46,10 @@ public final class VariantStateLifecycle {
 	 *
 	 * <p>Applicability is keyed by {@code EntityType<?>}, so no {@code instanceof} filter is
 	 * needed: players, items and any other entity simply miss the map.
+	 *
+	 * <p>Biome conditions are evaluated lazily: if no candidate requires conditions, no biome
+	 * lookup is performed. If at least one candidate has conditions, a single biome lookup is
+	 * performed and reused for all candidate evaluations.
 	 */
 	private static void selectVariant(Entity entity, ServerLevel level) {
 		if (entity.isLoadedFromDisk()) {
@@ -63,6 +69,34 @@ public final class VariantStateLifecycle {
 			return;
 		}
 
-		entity.setAttached(VariantAttachments.VARIANT_TEXTURE, candidates.getFirst().texture());
+		// Check if any candidate has conditions that require biome evaluation
+		boolean needsBiomeCheck = candidates.stream()
+				.anyMatch(c -> c.conditions().isPresent() && !c.conditions().get().isEmpty());
+
+		Holder<net.minecraft.world.level.biome.Biome> biome = null;
+		if (needsBiomeCheck) {
+			BlockPos pos = entity.blockPosition();
+			biome = level.getBiome(pos);
+		}
+
+		for (VariantDefinition candidate : candidates) {
+			if (candidate.conditions().isPresent()) {
+				VariantConditions conditions = candidate.conditions().get();
+				if (!conditions.isEmpty()) {
+					// Candidate has biome conditions, biome must have been looked up
+					if (biome != null && conditions.matches(biome)) {
+						entity.setAttached(VariantAttachments.VARIANT_TEXTURE, candidate.texture());
+						return;
+					}
+					// Conditions not met, continue to next candidate
+					continue;
+				}
+			}
+			// No conditions or empty conditions (should not happen due to validation) -> eligible
+			entity.setAttached(VariantAttachments.VARIANT_TEXTURE, candidate.texture());
+			return;
+		}
+
+		// No candidate matched: do not attach a variant texture, allow vanilla fallback
 	}
 }
