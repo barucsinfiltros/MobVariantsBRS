@@ -143,107 +143,121 @@ exists in this repository** (the README is still the unmodified template text).
 `.kilo/plans/1790903055742-mob-variants-brs-architecture.md`. No file named in this
 section exists in the repository.
 
-### D-011 — Variant state is a single `Identifier` attachment on `Entity`
+### D-011 — Variant state architecture: resolved texture attachment + server snapshot
 
-- **Status:** `PROPOSED`
-- **Decision:** The entity carries exactly one piece of variant state: the variant's
-  `Identifier`, stored through Fabric's Data Attachment API. Everything else is
-  derived, immutable, and shared.
-- **Source:** plan §1.2, §1.3, §9.
-- **Rationale given by the plan:** small (one NBT string), server-authoritative, makes
-  re-evaluation structurally impossible, and lets a definition change on `/reload`
-  reach every varianted mob without touching an entity.
-- **Not implemented:** no attachment type, no `AttachmentRegistry` call, and no
-  attachment data exists in this repository.
+- **Status:** `IMPLEMENTED`
+- **Decision:** Entity persistent state is the resolved texture `Identifier` in
+  `VARIANT_TEXTURE`. This attachment is persistent and synchronised to clients. The
+  entity does **not** persist a variant ID.
+- `SERVER_VARIANT_SNAPSHOT` is separate server/global state stored through
+  `GlobalAttachments`. The snapshot is not persistent entity state and is not
+  client-synchronised.
+- Resolved render state (`VARIANT_TEXTURE`) and definition snapshot
+  (`SERVER_VARIANT_SNAPSHOT`) are intentionally separate: the snapshot is rebuilt on
+  every reload from datapacks and is needed only for selection; the texture is the
+  single value that must survive disk load, chunk unload/reload, teleport, and
+  late-join synchronisation.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:21-49`;
+  `src/main/java/com/baruc/brs/mobvariants/variant/VariantSnapshot.java:16-50`;
+  `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:63-65`.
 
-### D-012 — No custom networking code
+### D-012 — No custom networking; Fabric Attachment synchronization is used
 
-- **Status:** `PROPOSED`
-- **Decision:** The mod ships no packets, no payload registration, and no hand-rolled
-  NBT mixin. Persistence, client synchronisation, and chunk-load synchronisation come
-  from Fabric's attachment API.
-- **Source:** plan §1.3, §5.1.
-- **Not implemented:** the repository contains no networking code at all.
+- **Status:** `IMPLEMENTED`
+- **Decision:** No custom networking code; no packets, no payload registration, no
+  hand-rolled NBT mixin. Persistence, client synchronisation, and chunk-load
+  synchronisation come from Fabric's attachment API on `VARIANT_TEXTURE`.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:35-39`;
+  `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:22-23`.
 
-### D-013 — No per-tick listener anywhere
+### D-013 — No per-tick processing; selection at ENTITY_LOAD
 
-- **Status:** `PROPOSED`
-- **Decision:** The architecture registers no tick hook of any kind. Future variant
-  behaviour reacts to the variant id at spawn, never on a tick; a tick-based variant
-  behaviour system is explicitly rejected.
-- **Source:** plan §2 (step 8), §3.3, §9.4.
-- **Not implemented:** trivially true today, because the mod has no listeners at all.
+- **Status:** `IMPLEMENTED`
+- **Decision:** The architecture registers no tick hook of any kind. Variant selection and
+  biome-condition evaluation run once during the `ENTITY_LOAD` event. The first
+  statement of `selectVariant` guards against already-loaded entities; biome lookup is
+  performed at most once per selection.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:38,54-80`.
 
-### D-014 — Selection is guarded by `entity.isLoadedFromDisk()`
+### D-014 — Two idempotency guards at selection
 
-- **Status:** `PROPOSED`
-- **Decision:** Selection runs in an `ENTITY_LOAD` listener whose first statement is
-  `if (entity.isLoadedFromDisk()) return;`, so a mob loaded from disk keeps its
-  persisted id and is never re-selected.
-- **Source:** plan §2.1, §2.2.
-- **Rationale given by the plan:** `ENTITY_LOAD` fires for both spawn and NBT load, so
-  the event alone is insufficient; the guard is satisfied without a mixin because
-  vanilla `Entity` implements `EntityLoadData` exposing `isLoadedFromDisk()`.
-- **Not implemented:** no event listener is registered in this repository.
+- **Status:** `IMPLEMENTED`
+- **Decision:** Selection is guarded by both `entity.isLoadedFromDisk()` (catches entities
+  whose NBT has just been restored) and `entity.hasAttached(VARIANT_TEXTURE)` (the
+  load-bearing guard). The persistent attachment is already present on every
+  disk-restored, reloaded, teleported, or respawned entity because it survives NBT
+  round-trips and Fabric's attachment sync handshake. Together the two guards make
+  selection idempotent without depending on `isLoadedFromDisk()` alone.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:54-61`.
 
-### D-015 — Zero server-side mixins; exactly one client-side mixin
+### D-015 — Zero server-side Mixins; two client-side Mixins for the render pipeline
 
-- **Status:** `PROPOSED`
+- **Status:** `IMPLEMENTED`
 - **Decision:** No server-side mixin is required — selection, persistence, and client
-  sync are fully covered by Fabric API. Exactly one client mixin resolves a variant's
-  texture, falling through to vanilla when the entity has no variant.
-- **Source:** plan §6.1, §6.2.
-- **Not implemented:** the only mixins in the repository are the two inert template
-  mixins `ExampleMixin` and `ExampleClientMixin`, neither of which performs variant work.
+  sync are fully covered by Fabric API. Two client mixins resolve the variant texture:
+  - `LivingEntityRenderStateMixin`: extracts the resolved texture from the entity's
+    `VARIANT_TEXTURE` attachment and stores it on the `LivingEntityRenderState`.
+  - `LivingEntityRendererMixin`: reads the texture from the render state during
+    rendering and supplies it to the vanilla renderer, falling through to vanilla when
+    no variant texture is present.
+- **Evidence:** `src/main/resources/mob_variants_brs.mixins.json:5` (empty mixins array);
+  `src/client/resources/mob_variants_brs.client.mixins.json:5-8`;
+  `src/client/java/com/baruc/brs/mobvariants/client/mixin/LivingEntityRenderStateMixin.java`;
+  `src/client/java/com/baruc/brs/mobvariants/client/mixin/LivingEntityRendererMixin.java`.
 
-### D-016 — The client mixin's target method is unverified for 26.1.2
+### D-016 — Client mixin target method verification (SUPERSEDED)
 
-- **Status:** `PROPOSED` (and explicitly unverified by the plan)
-- **Fact recorded here:** the plan states that in 1.21.x mojmap the target was
-  `LivingEntityRenderer#getTextureLocation(LivingEntity)`, but that this name is
-  **"UNVERIFIED for 26.1.2"** after the 26.x render-pipeline rework, and that reading
-  the real class via `genSources` is the first implementation task.
+- **Status:** `SUPERSEDED`
+- **Decision:** The plan recorded that the client mixin target was "UNVERIFIED for 26.1.2"
+  after the 26.x render-pipeline rework. This concern was resolved: the target methods
+  were verified via `genSources` against Minecraft 26.1.2 and the two client mixins
+  (`LivingEntityRenderStateMixin`, `LivingEntityRendererMixin`) inject successfully.
 - **Source:** plan §6.2, §10 risk 1.
-- **This document therefore does not name a target method as decided.**
+- **Superseded by:** D-015 (implemented mixin list with verified targets).
 
-### D-017 — Failure mode of the client mixin: `require = 0` plus one warning
+### D-017 — Client mixin failure mode: `defaultRequire: 1` (hard failure) (SUPERSEDED)
 
-- **Status:** `PROPOSED`, explicitly reversible
-- **Decision:** The plan's recommendation is `require = 0` with a single `LOGGER.warn`
-  on first application failure, so a rename degrades to "variants render with the
-  vanilla texture" instead of hard-crashing on a Minecraft update. The plan explicitly
-  says this default may be overridden in favour of a loud startup failure.
-- **Source:** plan §6.2 (failure-mode row), §10 risk 1.
-- **Status note:** this remains an open choice, not a settled decision.
+- **Status:** `SUPERSEDED`
+- **Decision:** The plan proposed `require = 0` with a warning as a degradation mode. The
+  adopted policy is `injectors.defaultRequire: 1` in both mixin configs, making
+  injection failure a hard startup failure. This is acceptable because the project
+  targets a pinned Minecraft version (26.1.2) and the targets were verified against
+  that version.
+- **Evidence:** `src/main/resources/mob_variants_brs.mixins.json:7`;
+  `src/client/resources/mob_variants_brs.client.mixins.json:10`.
+- **Supersedes:** the plan's `require = 0` proposal.
 
-### D-018 — Path-derived variant identity
+### D-018 — Variant identity derived from resource path
 
-- **Status:** `PROPOSED`
-- **Decision:** A variant's identity is derived from its file path,
-  `data/mob_variants_brs/variants/<entityTypePath>/<name>.json`; the path is the single
-  source of truth for both the variant id and the entity type, so no field in the data
-  file can contradict it.
-- **Source:** plan §8.1, §8.2.
-- **Not implemented:** no `data/mob_variants_brs/` directory exists under
-  `src/main/resources`.
+- **Status:** `IMPLEMENTED`
+- **Decision:** Variant definition identity is derived from the resource path:
+  `data/mob_variants_brs/variants/<name>.json` → `mob_variants_brs:<name>`.
+  The directory is flat (no per-entity-type subdirectories). `entity_type` is a required
+  JSON field inside the definition and is NOT derived from the path. The persistent
+  entity state remains the resolved texture `Identifier` in `VARIANT_TEXTURE`, not the
+  variant ID.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantDefinition.java:14-15`;
+  `src/main/java/com/baruc/brs/mobvariants/variant/VariantSnapshot.java:70-85`;
+  `src/main/resources/data/mob_variants_brs/variants/ice_zombie.json:1-4`.
 
-### D-019 — `VariantSelector` is the single selection extension point
+### D-019 — `VariantSelector` abstraction (REJECTED)
 
-- **Status:** `PROPOSED`
-- **Decision:** Selection is a one-method interface; the v1 implementation returns the
-  first candidate. The plan states plainly that this makes every mob of a type share
-  one variant, and that this is a deliberate placeholder so a real selector replaces
-  exactly one class.
+- **Status:** `REJECTED`
+- **Decision:** A `VariantSelector` interface was considered as an extension point for
+  selection logic but was not adopted. v1 selection is sufficiently small and is
+  implemented directly in `VariantStateLifecycle.selectVariant()`; the single-method
+  interface would add indirection without benefit.
 - **Source:** plan §8.3, §9.6.
-- **Not implemented:** no such interface or implementation exists.
 
-### D-020 — Unknown variant id degrades to vanilla
+### D-020 — No matching candidate → vanilla fallback
 
-- **Status:** `PROPOSED`
-- **Decision:** A variant id that no longer resolves — because its definition was
-  deleted, renamed, or exists only on the server — is treated as "no variant"; the mod
-  falls back to vanilla rendering and logs at debug rather than warn.
-- **Source:** plan §4.3, §10 risks 4 and 6.
+- **Status:** `IMPLEMENTED`
+- **Decision:** No matching candidate (or no candidate at all) means no `VARIANT_TEXTURE`
+  attachment is set on the entity. The client renderer then falls back to vanilla
+  rendering because the attachment is absent. The entity does not persist a variant ID,
+  so there is no "unknown variant ID" case to degrade from.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:100-101`;
+  `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:22-26`.
 
 ### D-021 — Do not declare mappings explicitly; do not guess Loom DSL
 
@@ -259,25 +273,25 @@ section exists in the repository.
 
 ### D-022 — No `initializer()` on the attachment
 
-- **Status:** `PROPOSED`
-- **Decision:** The attachment registers no default initializer, so an entity with no
-  variant allocates nothing and `hasAttached` returns false.
-- **Source:** plan §3.5, §11 item 4.
+- **Status:** `IMPLEMENTED`
+- **Decision:** `VARIANT_TEXTURE` deliberately registers no default initializer. An entity
+  with no variant allocates nothing in the attachment map, and `hasAttached` returns
+  false, which is used as the second idempotency guard.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:28-29,35-39`.
 
 ### D-023 — `copyOnDeath()` deliberately left unset
 
-- **Status:** `PROPOSED`, deliberate
-- **Decision:** A variant does **not** survive a zombie→drowned or other mob conversion
-  in v1, because `copyOnDeath()` is left unset. The plan records this as a low-severity
-  deliberate choice with a one-builder-call remedy if the design ever wants it.
-- **Source:** plan §10 risk 8.
+- **Status:** `IMPLEMENTED`
+- **Decision:** `VARIANT_TEXTURE` deliberately does not use `copyOnDeath()`. A variant does
+  not survive zombie→drowned or other mob conversion in v1.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:29-30,35-39`.
 
 ---
 
-## D. Proposed rejected alternatives
+## D. Rejected alternatives
 
-Recorded **only** where the approved plan states the alternative and its rejection.
-Each remains `PROPOSED`.
+Recorded where the approved plan or implementation explicitly considered and rejected an
+alternative.
 
 | ID | Alternative | Rejected because | Source |
 | --- | --- | --- | --- |
@@ -293,21 +307,79 @@ Each remains `PROPOSED`.
 
 ---
 
-## E. Proposed non-goals
+## E. Non-goals
 
 ### D-024 — Explicit scope boundary for the core layer
 
-- **Status:** `PROPOSED`
+- **Status:** `IMPLEMENTED`
 - **Decision:** Health/damage/armour/scaling formulas, stat multipliers, balancing,
   probability weighting, commands, GUI, tag-driven opt-in, and any variant behaviour
   that runs on a tick are out of scope. Only the seams that would accept them later are
   defined.
-- **Source:** plan header scope note, §13.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:50-52`;
+  `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:29-30`.
 
 ---
 
-## F. Superseded — none recorded
+## F. Superseded
 
-No decision in this repository has been superseded. The commit history contains a
-single commit, `230ec45` "chore: initialize Fabric 26.1.2 project", so there is no
-decision history to record.
+The following decisions from the approved plan were superseded by implementation:
+
+| ID | Previous decision | Superseded by | Reason |
+| --- | --- | --- | --- |
+| D-011 | Single `Identifier` attachment as variant ID | D-011 (implemented) | Actual architecture uses resolved texture `Identifier` + separate server snapshot |
+| D-014 | Guard only by `isLoadedFromDisk()` | D-014 (implemented) | Two guards: `isLoadedFromDisk()` + `hasAttached(VARIANT_TEXTURE)` |
+| D-015 | Zero server mixins; one client mixin | D-015 (implemented) | Zero server mixins; **two** client mixins |
+| D-016 | Client mixin target unverified for 26.1.2 | D-016 (superseded) | Targets verified via `genSources` |
+| D-017 | `require = 0` with warning | D-017 (superseded) | Adopted `defaultRequire: 1` (hard failure) |
+| D-018 | Path-derived identity with entity type in path | D-018 (implemented) | Flat directory; `entity_type` is JSON field, not path-derived |
+| D-019 | `VariantSelector` interface | D-019 (rejected) | Not adopted; selection inlined in `VariantStateLifecycle` |
+
+---
+
+### D-025 — Condition model
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** Biome conditions are represented by a dedicated immutable
+  `VariantConditions` value object. It is optional in a variant definition and
+  encapsulates the condition data and matching logic.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantConditions.java:10-45`.
+
+### D-026 — Optional conditions
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** `VariantDefinition` has an optional `conditions` field. Definitions
+  without conditions remain unconditional and do not require biome evaluation.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantDefinition.java:17-19,21-26`.
+
+### D-027 — Registry validation at snapshot construction
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** Referenced entity types and biome identifiers are validated while
+  constructing the immutable server snapshot during resource loading/reload. Invalid
+  definitions are isolated instead of causing runtime biome lookups to fail.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantSnapshot.java:70-115`.
+
+### D-028 — Lazy biome evaluation
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** Biome lookup occurs only when at least one candidate requires biome
+  conditions, and at most one lookup is performed for a given entity selection. The
+  result is reused while evaluating candidates.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:72-80`.
+
+### D-029 — Deterministic candidate ordering
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** Variant candidates are sorted deterministically by variant ID during
+  resource loading so that first-match selection has reproducible ordering.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/variant/VariantSnapshot.java:34-45,70-72,110-111`.
+
+### D-030 — Server snapshot as global attachment
+
+- **Status:** `IMPLEMENTED`
+- **Decision:** The immutable `VariantSnapshot` is published through
+  `SERVER_VARIANT_SNAPSHOT` on server `GlobalAttachments`, allowing atomic replacement
+  during resource reload without introducing a separate `VariantRegistry` abstraction.
+- **Evidence:** `src/main/java/com/baruc/brs/mobvariants/attachment/VariantAttachments.java:41-49`;
+  `src/main/java/com/baruc/brs/mobvariants/variant/VariantStateLifecycle.java:63-65`.
