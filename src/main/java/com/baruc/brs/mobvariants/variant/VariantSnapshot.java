@@ -11,6 +11,8 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.level.biome.Biome;
 
 /**
@@ -84,33 +86,78 @@ public record VariantSnapshot(
 				continue;
 			}
 
-			// Validate conditions if present
-			if (definition.conditions().isPresent()) {
-				VariantConditions conditions = definition.conditions().get();
-				if (conditions.isEmpty()) {
-					MobVariantsBRS.LOGGER.error("Skipping variant definition {}: empty conditions are not allowed",
-							variantId);
-					continue;
-				}
+// Validate conditions if present
+		if (definition.conditions().isPresent()) {
+			VariantConditions conditions = definition.conditions().get();
+			if (conditions.isEmpty()) {
+				MobVariantsBRS.LOGGER.error("Skipping variant definition {}: empty conditions are not allowed",
+						variantId);
+				continue;
+			}
 
-				boolean hasInvalidBiome = false;
-				for (Identifier biomeId : conditions.biomes()) {
-					if (biomeRegistry.getOptional(biomeId).isEmpty()) {
-						MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown biome {}",
-								variantId, biomeId);
-						hasInvalidBiome = true;
+			boolean hasInvalidBiome = false;
+			for (Identifier biomeId : conditions.biomes()) {
+				if (biomeRegistry.getOptional(biomeId).isEmpty()) {
+					MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown biome {}",
+							variantId, biomeId);
+					hasInvalidBiome = true;
+					break;
+				}
+			}
+			if (hasInvalidBiome) {
+				continue;
+			}
+		}
+
+		// Validate attributes if present
+		if (definition.attributes().isPresent()) {
+			VariantAttributes attributes = definition.attributes().get();
+			if (!attributes.isEmpty()) {
+				boolean hasInvalidAttribute = false;
+				for (Map.Entry<Identifier, Double> attrEntry : attributes.values().entrySet()) {
+					Identifier attributeId = attrEntry.getKey();
+					Double value = attrEntry.getValue();
+
+					// Check for non-finite values
+					if (value == null || value.isNaN() || value.isInfinite()) {
+						MobVariantsBRS.LOGGER.error("Skipping variant definition {}: attribute {} has non-finite value {}",
+								variantId, attributeId, value);
+						hasInvalidAttribute = true;
 						break;
 					}
+
+					// Resolve attribute from registry
+					var attributeHolder = BuiltInRegistries.ATTRIBUTE.get(attributeId);
+					if (attributeHolder.isEmpty()) {
+						MobVariantsBRS.LOGGER.error("Skipping variant definition {}: unknown attribute {}",
+								variantId, attributeId);
+						hasInvalidAttribute = true;
+						break;
+					}
+
+					// Validate against attribute bounds if it's a RangedAttribute
+					Attribute attribute = attributeHolder.get().value();
+					if (attribute instanceof RangedAttribute rangedAttribute) {
+						double minValue = rangedAttribute.getMinValue();
+						double maxValue = rangedAttribute.getMaxValue();
+						if (value < minValue || value > maxValue) {
+							MobVariantsBRS.LOGGER.error("Skipping variant definition {}: attribute {} value {} outside supported range [{}, {}]",
+									variantId, attributeId, value, minValue, maxValue);
+							hasInvalidAttribute = true;
+							break;
+						}
+					}
 				}
-				if (hasInvalidBiome) {
+				if (hasInvalidAttribute) {
 					continue;
 				}
 			}
-
-			byVariantId.put(variantId, definition);
-			byEntityType.computeIfAbsent(entityType, unused -> new ArrayList<>()).add(definition);
 		}
 
-		return new VariantSnapshot(byVariantId, byEntityType);
+		byVariantId.put(variantId, definition);
+		byEntityType.computeIfAbsent(entityType, unused -> new ArrayList<>()).add(definition);
+	}
+
+	return new VariantSnapshot(byVariantId, byEntityType);
 	}
 }

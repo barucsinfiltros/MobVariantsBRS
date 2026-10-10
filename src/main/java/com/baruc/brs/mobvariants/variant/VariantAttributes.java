@@ -17,10 +17,8 @@ import net.minecraft.resources.Identifier;
  * by attribute identifier.
  */
 public record VariantAttributes(Map<Identifier, Double> values) {
-	public static final Codec<VariantAttributes> CODEC = RecordCodecBuilder.create(i -> i.group(
-			Codec.unboundedMap(Identifier.CODEC, Codec.DOUBLE).optionalFieldOf("attributes", Map.of())
-					.forGetter(VariantAttributes::values)
-	).apply(i, VariantAttributes::new));
+	public static final Codec<VariantAttributes> CODEC = Codec.unboundedMap(Identifier.CODEC, Codec.DOUBLE)
+			.xmap(VariantAttributes::new, VariantAttributes::values);
 
 	/**
 	 * @return true if no attributes are declared
