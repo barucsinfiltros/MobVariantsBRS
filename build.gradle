@@ -64,6 +64,26 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }
 
+// Focused executable checks for the optional variant-attribute feature:
+// codec, validation against the real Minecraft registries, and the selection
+// ordering contract. The repository has no JUnit dependency, so the checks run
+// as a plain main class through JavaExec on the test runtime classpath instead
+// of the test task.
+tasks.register('verifyVariantAttributes', JavaExec) {
+	description = 'Runs the focused variant-attribute codec and validation checks.'
+	group = 'verification'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.baruc.brs.mobvariants.verify.VariantAttributeVerification'
+}
+
+// The test source set holds the verification main class, but the repository
+// has no JUnit dependency, so the test task discovers no tests to execute.
+// Gradle fails the task in that situation; the focused checks are executed
+// through verifyVariantAttributes instead.
+tasks.named('test') {
+	failOnNoDiscoveredTests = false
+}
+
 java {
 	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
 	// if it is present.
