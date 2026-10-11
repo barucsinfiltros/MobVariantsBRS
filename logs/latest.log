@@ -1,58 +1,58 @@
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: real BuiltInRegistries.ATTRIBUTE is populated
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: minecraft:max_health resolves in the real registry
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: resolved max_health is the vanilla Attributes.MAX_HEALTH implementation
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: max_health is a RangedAttribute with the real supported bounds [1.0, 1024.0]
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: definition with top-level attributes decodes successfully
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: entity_type retains its value
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: texture retains its value
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: conditions retain their biomes
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: attributes object is present
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: attributes contains the three configured entries
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:max_health decodes to 40.0
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:attack_damage decodes to 5.0
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:movement_speed decodes to 0.3
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: encoded output has a top-level attributes member
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: top-level attributes member is a JSON object
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: attributes object is flat, not nested under a second attributes key
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: attributes object contains minecraft:max_health
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:max_health is 40.0
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:attack_damage is 5.0
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:movement_speed is 0.3
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] omitted: definition without attributes decodes successfully
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] omitted: attributes optional is empty
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] omitted: remaining fields still decode
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] omitted: encoding a definition without attributes produces no attributes member
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] round trip: encode then decode reproduces the original definition
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] round trip: attributes survive the round trip
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] order: ice_zombie sorts before strong_zombie under the listener's comparator
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] order: the loaded ice_zombie.json definition matches biome minecraft:snowy_plains
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] order: ice_zombie.json decodes with no attributes (existing definition unaffected)
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: real vanilla biome registry contains minecraft:snowy_plains
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] registry: biome registry is non-empty (65 biomes)
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: JSON 1e999 reaches the codec as a non-finite double
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:above_max: attribute minecraft:max_health value 2000.0 outside supported range [1.0, 1024.0]
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:below_min: attribute minecraft:max_health value 0.5 outside supported range [1.0, 1024.0]
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:nan: attribute minecraft:max_health has non-finite value NaN
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:neg_inf: attribute minecraft:max_health has non-finite value -Infinity
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:pos_inf: attribute minecraft:max_health has non-finite value Infinity
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:unknown_attr: unknown attribute minecraft:not_an_attribute
-[20:26:51] [main/ERROR]: Skipping variant definition mob_variants_brs:unknown_biome: unknown biome minecraft:not_a_biome
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: in-range finite values (max_health 40.0, attack_damage 5.0, movement_speed 0.3) are accepted
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: definition without attributes is accepted (backward compatibility)
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: empty attributes object is accepted as a no-op
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: definition with a real biome condition is accepted (real biome registry in use)
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: unknown attribute identifier is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: NaN value is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: positive infinity (1e999) is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: negative infinity (-1e999) is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: value below the attribute's minimum (max_health 0.5 < 1.0) is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: value above the attribute's maximum (max_health 2000.0 > 1024.0) is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] validation: unknown biome identifier is rejected
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] selection: rejected definitions cannot participate in entity selection
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] selection: exactly the accepted definitions are selectable for minecraft:zombie
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] selection: selectable variants are ordered by ascending variant id
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] selection: the accepted definition retains its configured attribute values
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] apply-api: a real AttributeInstance starts from the attribute's default base value
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] apply-api: setBaseValue assigns an absolute base value (not an additive modifier)
-[20:26:51] [main/INFO]: [STDOUT]: [PASS] apply-api: a second setBaseValue replaces the previous absolute base value
-[20:26:51] [main/INFO]: [STDOUT]: Checks passed: 50, failed: 0
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: real BuiltInRegistries.ATTRIBUTE is populated
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: minecraft:max_health resolves in the real registry
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: resolved max_health is the vanilla Attributes.MAX_HEALTH implementation
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: max_health is a RangedAttribute with the real supported bounds [1.0, 1024.0]
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: definition with top-level attributes decodes successfully
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: entity_type retains its value
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: texture retains its value
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: conditions retain their biomes
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: attributes object is present
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: attributes contains the three configured entries
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:max_health decodes to 40.0
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:attack_damage decodes to 5.0
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] decode: minecraft:movement_speed decodes to 0.3
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: encoded output has a top-level attributes member
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: top-level attributes member is a JSON object
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: attributes object is flat, not nested under a second attributes key
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: attributes object contains minecraft:max_health
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:max_health is 40.0
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:attack_damage is 5.0
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] encode: encoded minecraft:movement_speed is 0.3
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] omitted: definition without attributes decodes successfully
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] omitted: attributes optional is empty
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] omitted: remaining fields still decode
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] omitted: encoding a definition without attributes produces no attributes member
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] round trip: encode then decode reproduces the original definition
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] round trip: attributes survive the round trip
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] order: ice_zombie sorts before strong_zombie under the listener's comparator
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] order: the loaded ice_zombie.json definition matches biome minecraft:snowy_plains
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] order: ice_zombie.json decodes with no attributes (existing definition unaffected)
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: real vanilla biome registry contains minecraft:snowy_plains
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] registry: biome registry is non-empty (65 biomes)
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: JSON 1e999 reaches the codec as a non-finite double
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:above_max: attribute minecraft:max_health value 2000.0 outside supported range [1.0, 1024.0]
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:below_min: attribute minecraft:max_health value 0.5 outside supported range [1.0, 1024.0]
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:nan: attribute minecraft:max_health has non-finite value NaN
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:neg_inf: attribute minecraft:max_health has non-finite value -Infinity
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:pos_inf: attribute minecraft:max_health has non-finite value Infinity
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:unknown_attr: unknown attribute minecraft:not_an_attribute
+[14:44:52] [main/ERROR]: Skipping variant definition mob_variants_brs:unknown_biome: unknown biome minecraft:not_a_biome
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: in-range finite values (max_health 40.0, attack_damage 5.0, movement_speed 0.3) are accepted
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: definition without attributes is accepted (backward compatibility)
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: empty attributes object is accepted as a no-op
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: definition with a real biome condition is accepted (real biome registry in use)
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: unknown attribute identifier is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: NaN value is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: positive infinity (1e999) is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: negative infinity (-1e999) is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: value below the attribute's minimum (max_health 0.5 < 1.0) is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: value above the attribute's maximum (max_health 2000.0 > 1024.0) is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] validation: unknown biome identifier is rejected
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] selection: rejected definitions cannot participate in entity selection
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] selection: exactly the accepted definitions are selectable for minecraft:zombie
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] selection: selectable variants are ordered by ascending variant id
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] selection: the accepted definition retains its configured attribute values
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] apply-api: a real AttributeInstance starts from the attribute's default base value
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] apply-api: setBaseValue assigns an absolute base value (not an additive modifier)
+[14:44:52] [main/INFO]: [STDOUT]: [PASS] apply-api: a second setBaseValue replaces the previous absolute base value
+[14:44:52] [main/INFO]: [STDOUT]: Checks passed: 50, failed: 0
