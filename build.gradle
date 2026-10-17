@@ -40,6 +40,12 @@ fabricApi {
 	configureDataGeneration {
 		client = true
 	}
+	configureTests {
+		createSourceSet = true
+		enableGameTests = true
+		eula = true
+		clearRunDirectory = true
+	}
 }
 
 dependencies {

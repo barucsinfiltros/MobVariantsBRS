@@ -1,0 +1,41 @@
+{
+	"schemaVersion": 1,
+	"id": "mob_variants_brs",
+	"version": "${version}",
+	"name": "Mob Variants BRS",
+	"description": "Adds configurable texture variants for mobs",
+	"authors": [
+		"Baruc"
+	],
+	"contact": {},
+	"license": "CC0-1.0",
+	"icon": "assets/mob_variants_brs/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.baruc.brs.mobvariants.MobVariantsBRS"
+		],
+		"client": [
+			"com.baruc.brs.mobvariants.client.MobVariantsBRSClient"
+		],
+		"fabric-datagen": [
+			"com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator"
+		],
+		"fabric-gametest": [
+			"com.baruc.brs.mobvariants.gametest.VariantResourceGameTest"
+		]
+	},
+	"mixins": [
+		"mob_variants_brs.mixins.json",
+		{
+			"config": "mob_variants_brs.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
