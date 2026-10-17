@@ -15,7 +15,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		"mob_variants_brs" {
+		"mob_variants_brs_main" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}
