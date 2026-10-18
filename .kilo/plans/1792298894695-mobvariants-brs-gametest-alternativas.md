@@ -2,7 +2,7 @@
 
 **Objetivo:** Evaluar alternativas técnicamente justificadas para probar recursos de variante en Fabric GameTest sin depender de una API de propiedad JVM de Loom no verificada. Solo análisis y planificación. No se implementan cambios.
 
-**Rama:** `feat/variant-state-layer` · **HEAD actual:** `0b77cae098451b9b8d1d10443a78c17918c1b8fb` (S-0087) · **Worktree:** limpio · **Histórico S-0082 (`c05e20ff...`):** existe como objeto commit en este repo (VERIFIED) · **HEAD reportado por S-0086:** `f21913275d5794e3d2ac54a1fb50782f0aac9d60` (referencia histórica; el HEAD actual es `0b77cae...`) · **HEAD reportado por S-0086 como "actual":** `16ae51f8fb4bfc434b3c78366cfa188ca183905e` (referencia histórica más antigua, no corresponde a ningún HEAD de esta sessión)
+**Rama:** `feat/variant-state-layer` · **HEAD actual:** `ffc4b9c2d250e3e45535f7c3bb1c5a3b0e0e2da2` (S-0089) · **Worktree:** limpio · **HEAD anterior (S-0087):** `0b77cae098451b9b8d1d10443a78c17918c1b8fb` (referencia histórica; el HEAD actual es `ffc4b9c...`) · **Histórico S-0082 (`c05e20ff...`):** existe como objeto commit en este repo (VERIFIED) · **HEAD reportado por S-0086:** `f21913275d5794e3d2ac54a1fb50782f0aac9d60` (referencia histórica; el HEAD actual es `ffc4b9c...`) · **HEAD reportado por S-0086 como "actual":** `16ae51f8fb4bfc434b3c78366cfa188ca183905e` (referencia histórica más antigua, no corresponde a ningún HEAD de esta sessión)
 
 ---
 
@@ -11,6 +11,12 @@
 No existe evidencia verificable de que Fabric Loom (cached `1.18.4`, `gradle.properties` declara `1.18-SNAPSHOT`) exponga un mecanismo soportado para pasar propiedades JVM personalizadas al servidor de `runGameTest`. S-0081 y S-0082 lo dejan BLOCKED/UNRESOLVED: `argFiles/runGameTest` solo tiene `-classpath`; `launch.cfg` solo trae `commonProperties` predeterminadas; el bytecode de `RunGameTask`/`AbstractRunTask`/`ProcessUtil`/`Arguments` no pudo inspeccionarse (`javap`/`jar` bloqueados). Por tanto, cualquier arquitectura que asuma `mob_variants_brs.gametest.variantId` queda descartada por instrucción.
 
 La prueba existente (`VariantResourceGameTest.variantDefinitionFound`) solo hace caso positivo: consulta `ResourceManager` directamente y parsea el JSON con el codec por cuenta propia. **No ejecuta el listener de producción** (`VariantDefinitionReloadListener`), ni valida `VariantSnapshot.build`, ni cubre casos faltante/inválido.
+
+La estrategia de cobertura se organiza en tres categorías independientes (ver §4 y §6):
+
+- **A — Carga, validación y publicación en producción:** ejercitar el camino de producción explícito a través del método público `VariantDefinitionReloadListener.attach(MinecraftServer)` en un entorno GameTest, y afirmar contra el snapshot publicado en los global attachments del servidor. No se requiere cambiar la visibilidad de `load(ResourceManager)` (se mantiene `private static`): `attach()` es público y ejecuta internamente `load()` + `VariantSnapshot.build()` + la publicación.
+- **B — Validación semántica de definiciones ya parseadas:** ejercitar `VariantSnapshot.build(List<Map.Entry<Identifier,VariantDefinition>>, Registry<Biome>)` directamente con definiciones ya parseadas, sin ejecutar el parser de JSON ni el listener de producción. No se le atribuye comportamiento de carga de recursos ni de listener.
+- **C — JSON mal formado a través del listener de producción:** **PENDING** hasta que se demuestre una estrategia de aislamiento concreta que permita ejercer el parseo y la gestión de errores de `load()` sin introducir cambios API no justificados y sin bloquear A y B.
 
 Recomendación (una sola arquitectura): **Approach B** — un camino de prueba aislado para los casos negativos (faltante, JSON inválido) que no depende de hacer fallar la ejecución normal del servidor GameTest, junto con el caso positivo existente mejorado para afirmar contra el snapshot publicado por el listener de producción. No se introduce propiedad JVM alguna.
 
@@ -239,6 +245,12 @@ Se investigaron las cuatro preguntas decisivas usando únicamente evidencia del 
 
 Criterios aplicados a A, B y C: fiabilidad/determinismo; aislamiento de fallos esperados del resultado de la corrida de pruebas; compatibilidad con Loom 1.18.x / Fabric 0.155.3+26.1.2 / Minecraft 26.1.2 / Java 25 (sin ejecutar builds); complejidad de implementación y mantenimiento; capacidad de ejercer validación y gestión de errores reales de producción; riesgo de falsos positivos / pruebas que saltan la ruta de producción; disponibilidad de la infraestructura requerida.
 
+Las tres coberturas se distinguen por la operación concreta que las ejerce y por el alcance de lo que demuestran:
+
+- **A — Producción real:** invoca `VariantDefinitionReloadListener.attach(MinecraftServer)` en GameTest y afirma contra el snapshot publicado en los global attachments del servidor. Es la única cobertura que ejerce el parser de JSON, `VariantSnapshot.build` y el canal de publicación del listener.
+- **B — Validación semántica aislada:** invoca `VariantSnapshot.build(...)` directamente con definiciones ya parseadas. No ejecuta el parser de JSON ni el listener de producción; no demuestra carga de recursos ni comportamiento de listener.
+- **C — JSON mal formado:** requiere ejercer `load()` (o `attach()` que lo ejecuta internamente) con un fixture inválido. **PENDING** porque no se ha demostrado una estrategia de aislamiento que la permita sin bloquear A y B.
+
 ### A. GameTest positivo con identificador de recurso fijo y verificado, más pruebas negativas separadas
 
 - Fiabilidad/determinismo: medio. El positivo es determinista con el recurso fijo `ice_zombie.json`. Los negativos requieren un recurso ausente o inválido presente en la corrida de GameTest; no hay forma limpia de enviar un identificador "inexistente" al servidor sin modificar datos o sin propiedades JVM.
@@ -289,6 +301,12 @@ Criterios aplicados a A, B y C: fiabilidad/determinismo; aislamiento de fallos e
 
 **Arquitectura:** Camino de prueba aislado para los casos negativos (faltante e inválido), más el caso positivo existente mejorado para afirmar contra el snapshot publicado por el listener de producción. No se introduce ni se asume `mob_variants_brs.gametest.variantId`.
 
+**Coberturas cubiertas por esta arquitectura:**
+
+- **A — Producción real:** el caso positivo mejorado ejerce `VariantDefinitionReloadListener.attach(MinecraftServer)` en GameTest (único punto de entrada necesario; `load(ResourceManager)` se mantiene `private static` y no se expone) y afirma contra el snapshot leído de `server.globalAttachments()`. No se propone cambiar la visibilidad de `load()` ni usar reflexión para A.
+- **B — Validación semántica aislada:** el camino de prueba aislado ejerce `VariantSnapshot.build(List<Map.Entry<Identifier,VariantDefinition>>, Registry<Biome>)` directamente con definiciones ya parseadas. No ejecuta el parser de JSON ni el listener de producción; no demuestra carga de recursos ni comportamiento de listener.
+- **C — JSON mal formado:** **PENDING.** No se especifica en esta arquitectura. `VariantSnapshot.build(...)` no parsea JSON (recibe `VariantDefinition` ya deserializadas), por lo que no puede probar la omisión de un archivo mal formado ni el logging de producción de `load()`. La única forma de ejercer `load()` es vía `attach()`, y un fixture de JSON mal formado en `src/gametest/resources` sería cargado durante la inicialización del listener, alterando el comportamiento de arranque (Cobertura A). No se ha demostrado una estrategia de aislamiento que permita probar C sin bloquear A y B. No se añade ningún archivo a `src/gametest/resources`.
+
 **Rationale:**
 1. No depende del mecanismo de propiedades JVM de Loom, cuyo estado es UNRESOLVED/BLOCKED (S-0081/S-0082).
 2. Los fallos esperados (faltante, inválido) se asercionan en el camino aislado, nunca haciendo fallar una corrida normal de GameTest, así no contaminan el resultado de la corrida de pruebas.
@@ -308,9 +326,10 @@ Criterios aplicados a A, B y C: fiabilidad/determinismo; aislamiento de fallos e
 
 1. **Prueba positiva existente (`VariantResourceGameTest.variantDefinitionFound`):**
    - Cambiar la aserción final para que valide el snapshot publicado por producción: obtener `server.globalAttachments().getAttachedOrElse(VariantAttachments.SERVER_VARIANT_SNAPSHOT, VariantSnapshot.EMPTY)` y afirmar que `variantsFor(EntityType.ZOMBIE)` contiene `ice_zombie` (o que `byVariantId` contiene `mob_variants_brs:ice_zombie`). Mantener la comprobación de existencia del recurso como precondición, pero no como única validación.
+   - Esto ejerce la Cobertura A a través del único punto de entrada público disponible: `VariantDefinitionReloadListener.attach(MinecraftServer)`. No se requiere cambiar la visibilidad de `load(ResourceManager)` (se mantiene `private static`); `attach()` es público y ejecuta internamente `load()` + `VariantSnapshot.build()` + la publicación.
    - *Descubrimiento requerido en implementación:* confirmar accesibilidad de `globalAttachments()` y `VariantAttachments.SERVER_VARIANT_SNAPSHOT` desde el entorno de GameTest, y el `EntityType` de zombie disponible.
 
-2. **Nuevo camino de prueba aislado para negativos (faltante e inválido):**
+2. **Nuevo camino de prueba aislado para negativos (faltante e inválido) — Cobertura B:**
    - Ubicación por descubrir (posiblemente `src/test/java/...` si se añade un framework de pruebas, o una clase `main` vía `JavaExec` como `verifyVariantAttributes`). No se asume JUnit.
    - Invocar directamente `VariantSnapshot.build(prepared, biomeRegistry)` con entradas controladas:
      - variante con `entity_type` desconocido → se salta;
@@ -318,7 +337,7 @@ Criterios aplicados a A, B y C: fiabilidad/determinismo; aislamiento de fallos e
      - `conditions` vacío → se salta;
      - atributo no finito / desconocido / fuera de rango → se salta;
      - entrada válida (`ice_zombie`) → se acepta y aparece en `byVariantId` / `byEntityType`.
-   - Afirmar que un identificador faltante (`mob_variants_brs:nonexistent`) no está en `byVariantId` y que una entrada válida sigue presente (no corrupción).
+   - Afirmar que un identificador faltante (`mob_variants_brs:nonexistent`) **no está en `byVariantId`** y que una entrada válida sigue presente (no corrupción). Esto demuestra únicamente la ausencia del identificador en el snapshot resultante; **no** demuestra que el listener de producción maneje un archivo de recursos faltante, porque `VariantSnapshot.build` recibe definiciones ya parseadas y no consulta `ResourceManager`.
    - *Descubrimiento requerido:* cómo obtener un `Registry<Biome>` válido fuera del servidor (resuelto: `Bootstrap.bootStrap()` + `VanillaRegistries.createLookup()` + `MappedRegistry` + `freeze()`, como demuestra `VariantAttributeVerification.realBiomeRegistry()`). Esta camino no requiere invocar `load(ResourceManager)`, que es `private static`; la Cobertura B se ejerce únicamente sobre `VariantSnapshot.build`, que es `public static`.
 
 3. **Fixtures de prueba para la Cobertura C (JSON mal formado):** **NO se añade de forma permanente.** Un archivo JSON mal formado en `src/gametest/resources/data/mob_variants_brs/variants/` sería cargado por el mismo datapack que `ice_zombie.json` durante la inicialización del listener en `attach()`, y su presencia puede alterar el comportamiento de arranque del listener (skip + log, snapshot parcial). Esta Cobertura **permanece PENDING** porque no se ha demostrado una estrategia de aislamiento que la permita sin bloquear las categorías A y B. No se añade ningún archivo a `src/gametest/resources` en esta fase. Si en el futuro se demuestra una estrategia viable (por ejemplo, un recurso temporal inyectado solo para un test concreto, o un camino que ejerza `load()` directamente), se especificaría en ese momento.
@@ -337,7 +356,7 @@ Las categorías A, B y C de §4 son **independientes**: una Cobertura no cubre l
 |---|-----------|----------|----------------------------------|-------------------------------------------|
 | 1 | **A** | La prueba positiva pasa **solo si** el listener de producción publicó el snapshot y `ice_zombie` es seleccionable para zombies; falla si solo existe el archivo en `ResourceManager` pero no fue aceptado por producción. | `VariantDefinitionReloadListener.getInstance().attach(server)` en GameTest, luego leer `server.globalAttachments().getAttachedOrElse(SERVER_VARIANT_SNAPSHOT, EMPTY)` y afirmar `variantsFor(EntityType.ZOMBIE)` contiene `ice_zombie`. | `attach()` es público (listener línea 75); `globalAttachments()` probado como mismo almacén que `level.globalAttachments()` (S-0086); `runGameTest` ejecutado con éxito (S-0077). |
 | 2 | **B** | La validación semántica rechaza entity type desconocido, condiciones vacías, bioma desconocido, atributo no finito, atributo desconocido y atributo fuera de rango; acepta definiciones válidas; no corrompe entradas no relacionadas. | Invocar `VariantSnapshot.build(prepared, biomeRegistry)` con entradas controladas (mismas categorías que en §4 B) y afirmar presencia/ausencia en `byVariantId`. | `VariantSnapshot.build` es `public static` (línea 72); `Registry<Biome>` obtenible vía `Bootstrap.bootStrap()` + `VanillaRegistries.createLookup()` (líneas 388-403 de `VariantAttributeVerification`). |
-| 3 | **B** | Un identificador faltante (`mob_variants_brs:nonexistent`) no está en `byVariantId` y una entrada válida sigue presente (no corrupción). | Misma invocación a `VariantSnapshot.build` que el criterio 2, con una entrada que excluye el id faltante e incluye `ice_zombie`. | Misma infraestructura que el criterio 2. |
+| 3 | **B** | Un identificador faltante (`mob_variants_brs:nonexistent`) no está en `byVariantId` y una entrada válida sigue presente (no corrupción). **Esto demuestra únicamente la ausencia del identificador en el snapshot resultante; no demuestra que el listener de producción maneje un archivo de recursos faltante**, porque `VariantSnapshot.build` recibe definiciones ya parseadas y no consulta `ResourceManager`. | Misma invocación a `VariantSnapshot.build` que el criterio 2, con una entrada que excluye el id faltante e incluye `ice_zombie`. | Misma infraestructura que el criterio 2. |
 | 4 | **C** | **PENDING** — No hay criterio ejecutable actualmente. La Cobertura C requiere una estrategia de aislamiento demostrada para un fixture de JSON mal formado que no altere la inicialización del listener (ver §4 C). | Ninguna operación especificada hasta que se demuestre la estrategia. | `load()` salta y loguea archivos inválidos (líneas 120-123), pero su comportamiento en runtime con un fixture real en `src/gametest/resources` no se ha verificado. |
 | 5 | — | Ninguna prueba asume `mob_variants_brs.gametest.variantId` ni requiere propiedades JVM en `build.gradle` o `argFiles`. | Las pruebas usan identificadores de recursos fijos (`mob_variants_brs:variants/ice_zombie.json`) y llamadas directas a métodos públicos; ningún `System.getProperty` ni `-D`. | `build.gradle` no declara `runGameTest`, `jvmArgs` ni `systemProperty` (líneas 43-49, 78-91); `argFiles/runGameTest` solo tiene `-classpath` (S-0081/S-0082). |
 | 6 | — | Se compila con Java 25. | `tasks.withType(JavaCompile).options.release = 25` en `build.gradle` (línea 70). | Verificado estáticamente en `build.gradle`. |
@@ -358,11 +377,17 @@ Las categorías A, B y C de §4 son **independientes**: una Cobertura no cubre l
 
 ### Pendientes (bloqueadores materiales)
 
-- **Accesibilidad de `VariantDefinitionReloadListener.load()`:** es `private static` (líneas 101-130). No invocable directamente desde un camino de prueba aislado sin reflexión ni cambio de visibilidad de producción. `attach()` es público y ejecuta `load()` internamente; `apply()` es `protected` y omite publicación si `server == null`.
 - **Propiedades JVM al servidor GameTest:** UNRESOLVED/BLOCKED (S-0081/S-0082). `build.gradle` no declara `runGameTest`, `jvmArgs` ni `systemProperty`; `argFiles/runGameTest` solo tiene `-classpath`. No se asume `mob_variants_brs.gametest.variantId`.
-- **Prueba positiva en GameTest contra el snapshot publicado:** requiere `attach(MinecraftServer)` con un servidor real en el entorno GameTest. No se ha ejecutado en este workspace durante esta sesión (prohibido ejecutar Gradle/GameTests).
+- **Prueba positiva en GameTest contra el snapshot publicado:** requiere `attach(MinecraftServer)` con un servidor real en el entorno GameTest. No se ha ejecutado en este workspace durante esta sessión (prohibido ejecutar Gradle/GameTests).
 - **Fixture de JSON inválido en runtime (Cobertura C):** `load()` salta y loguea archivos inválidos (líneas 120-123), pero este comportamiento no se ha verificado en runtime con un fixture inválido real en `src/gametest/resources`. La Cobertura C permanece PENDING (ver §4 C y §8 criterio 4) porque no se ha demostrado una estrategia de aislamiento que permita probarla sin alterar la inicialización del listener (Cobertura A). No se añade ningún archivo a `src/gametest/resources`.
 - **`selectVariant` sin entidad real:** no verificado si puede probarse sin spawn de entidad (depende de `ServerLevel` y `Entity`).
+
+### Aislamiento de `load(ResourceManager)` (no es bloqueador para A ni B)
+
+- `load(ResourceManager)` es `private static` (líneas 101-130) y por tanto **no es invocable directamente** desde un camino de prueba externo sin reflexión ni cambio de visibilidad de producción.
+- Esto **no bloquea la Cobertura A**: `attach(MinecraftServer)` es público y ejecuta internamente `load()` + `VariantSnapshot.build()` + la publicación, por lo que es el único punto de entrada necesario para ejercer el listener de producción.
+- Esto **no bloquea la Cobertura B**: ella se ejerce exclusivamente sobre `VariantSnapshot.build(List<Map.Entry<Identifier,VariantDefinition>>, Registry<Biome>)`, que es `public static` y recibe definiciones ya parseadas; no requiere invocar `load()`.
+- La única cobertura que necesitaría ejercer `load()` directamente es la **C**, la cual permanece PENDING precisamente por la combinación de esta limitación de visibilidad con la ausencia de una estrategia de aislamiento de fixtures (ver §4 C). No se propone cambiar la visibilidad de `load()` ni usar reflexión para habilitar A o B.
 
 ---
 
@@ -370,7 +395,7 @@ Las categorías A, B y C de §4 son **independientes**: una Cobertura no cubre l
 
 | Bloqueador | Experimento mínimo (no ejecutar ahora) |
 |------------|----------------------------------------|
-| `load()` es `private static` | Ejecutar `VariantSnapshot.build()` directamente con entradas controladas (ya posible) y, en fase posterior, decidir si se expone `load()` o se prueba vía `attach()` en GameTest. |
+| `load()` es `private static` | **No bloquea A ni B.** Para A, `attach()` es público y ejecuta `load()` internamente. Para B, `VariantSnapshot.build()` es `public static` y recibe definiciones ya parseadas. No se propone exponer `load()` ni usar reflexión. |
 | `attach()` en GameTest sin ejecución | Ejecutar `./gradlew runGameTest` y observar si el test positivo contra `server.globalAttachments()` publica y lee el snapshot correctamente. |
 | Fixture de JSON inválido en runtime (Cobertura C) | **PENDING — sin experimento definido.** `load()` salta y loguea archivos inválidos (líneas 120-123), pero este comportamiento no se ha verificado en runtime. Un fixture en `src/gametest/resources` afectaría a la inicialización del listener (Cobertura A), por lo que no se añade sin antes demostrar una estrategia de aislamiento. No bloquea A ni B. |
 | Propiedades JVM al servidor GameTest | No hay experimento dentro del alcance actual; se descarta por instrucción. Cualquier alternativa debe funcionar sin `-D` ni `build.gradle` modificado. |
@@ -408,10 +433,12 @@ La estrategia de prueba del listener de producción es **técnicamente factible 
 
 Un agente de implementación debe:
 
-1. **Confirmar accesibilidad de `attach()` desde un test GameTest:** escribir una versión mejorada de `VariantResourceGameTest.variantDefinitionFound` que, además de verificar el recurso en `ResourceManager`, llame `server.globalAttachments().getAttachedOrElse(VariantAttachments.SERVER_VARIANT_SNAPSHOT, VariantSnapshot.EMPTY)` y afirme que `ice_zombie` está en `byVariantId` / `variantsFor(EntityType.ZOMBIE)`.
+1. **Confirmar accesibilidad de `attach()` desde un test GameTest:** escribir una versión mejorada de `VariantResourceGameTest.variantDefinitionFound` que, Además de verificar el recurso en `Manager`, llame `VariantDefinitionReloadListener.getInstance().attach(server)` (punto de entrada público de Cobertura A) y luego lea `server.globalAttachments().getAttachedOrElse(VariantAttachments.SERVER_VARIANT_SNAPSHOT, VariantSnapshot.EMPTY)` para afirmar que `ice_zombie` está en `byVariantId` / `variantsFor(EntityType.ZOMBIE)`.
 2. **Ejecutar `./gradlew runGameTest`** para confirmar que el caso positivo pasa contra el snapshot publicado por producción.
-3. **Decidir sobre `load()`:** si `attach()` cubre suficientemente el camino de producción, no se necesita exponer `load()`. Si se requiere probar `load()` directamente, decidir entre cambio de visibilidad de producción o reflexión.
-4. **Implementar el camino aislado de negativos** usando `VariantSnapshot.build()` directamente con `Registry<Biome>` construido vía `Bootstrap.bootStrap()` + `VanillaRegistries.createLookup()`.
+3. **Cobertura B — camino aislado de negativos:** implementar y ejecutar una invocación directa a `VariantSnapshot.build(prepared, biomeRegistry)` con entradas controladas (punto de entrada público estático, sin tocar `load()`), usando `Registry<Biome>` construido vía `Bootstrap.bootStrap()` + `VanillaRegistries.createLookup()` + `MappedRegistry` + `freeze()` (como `VariantAttributeVerification.realBiomeRegistry()`).
+4. **Cobertura C:** **PENDING.** No se especifica un camino concreto hasta que se demuestre una estrategia de aislamiento que permita ejercer `load()` (o `attach()` con un fixture inválido) sin bloquear A y B. No se añade ningún fixture a `src/gametest/resources` en esta fase.
+
+No se requiere cambiar la visibilidad de `load()` (se mantiene `private static`): `attach()` es el punto de entrada público para la Cobertura A y `VariantSnapshot.build(...)` es el punto de entrada público para la Cobertura B.
 
 Sin editar `build.gradle`, sin introducir `mob_variants_brs.gametest.variantId`, y sin modificar el comportamiento de producción.
 
