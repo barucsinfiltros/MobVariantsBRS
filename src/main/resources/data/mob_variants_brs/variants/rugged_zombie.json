@@ -6,10 +6,6 @@
     "biomes": [
       "minecraft:windswept_hills",
       "minecraft:windswept_gravelly_hills",
-      "minecraft:windswept_forest",
-      "minecraft:stony_peaks",
-      "minecraft:jagged_peaks",
-      "minecraft:beach",
       "minecraft:stony_shore"
     ]
   }

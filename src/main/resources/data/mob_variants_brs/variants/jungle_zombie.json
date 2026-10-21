@@ -1,0 +1,12 @@
+
+{
+  "entity_type": "minecraft:zombie",
+  "texture": "mob_variants_brs:textures/entity/zombie/zombie_jungle.png",
+  "conditions": {
+    "biomes": [
+      "minecraft:jungle",
+      "minecraft:sparse_jungle",
+      "minecraft:bamboo_jungle"
+    ]
+  }
+}
