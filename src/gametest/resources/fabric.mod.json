@@ -18,9 +18,7 @@
 		"client": [
 			"com.baruc.brs.mobvariants.client.MobVariantsBRSClient"
 		],
-		"fabric-datagen": [
-			"com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator"
-		],
+		"fabric-datagen": [ "com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator" ],
 		"fabric-gametest": [
 			"com.baruc.brs.mobvariants.gametest.VariantResourceGameTest"
 		]

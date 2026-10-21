@@ -18,13 +18,10 @@
 		"client": [
 			"com.baruc.brs.mobvariants.client.MobVariantsBRSClient"
 		],
-		"fabric-datagen": [
-			"com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator"
-		],
-		"fabric-gametest": [
-			"com.baruc.brs.mobvariants.gametest.VariantResourceGameTest"
-		]
-	},
+			"fabric-datagen": [
+				"com.baruc.brs.mobvariants.client.MobVariantsBRSDataGenerator"
+			]
+		},
 	"mixins": [
 		"mob_variants_brs.mixins.json",
 		{
