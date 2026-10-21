@@ -1,0 +1,16 @@
+
+{
+  "entity_type": "minecraft:zombie",
+  "texture": "mob_variants_brs:textures/entity/zombie/zombie_rugged.png",
+  "conditions": {
+    "biomes": [
+      "minecraft:windswept_hills",
+      "minecraft:windswept_gravelly_hills",
+      "minecraft:windswept_forest",
+      "minecraft:stony_peaks",
+      "minecraft:jagged_peaks",
+      "minecraft:beach",
+      "minecraft:stony_shore"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+
+{
+  "entity_type": "minecraft:zombie",
+  "texture": "mob_variants_brs:textures/entity/zombie/zombie_arid.png",
+  "conditions": {
+    "biomes": [
+      "minecraft:desert",
+      "minecraft:savanna",
+      "minecraft:savanna_plateau",
+      "minecraft:windswept_savanna",
+      "minecraft:badlands",
+      "minecraft:wooded_badlands",
+      "minecraft:eroded_badlands"
+    ]
+  }
+}

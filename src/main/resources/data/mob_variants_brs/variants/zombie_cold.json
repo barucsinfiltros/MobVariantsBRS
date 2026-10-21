@@ -1,18 +1,19 @@
+
 {
   "entity_type": "minecraft:zombie",
-  "texture": "mob_variants_brs:textures/entity/zombie/zombie_ice.png",
+  "texture": "mob_variants_brs:textures/entity/zombie/zombie_cold.png",
   "conditions": {
     "biomes": [
       "minecraft:snowy_plains",
-      "minecraft:ice_spikes",
       "minecraft:snowy_taiga",
+      "minecraft:ice_spikes",
       "minecraft:snowy_slopes",
       "minecraft:frozen_peaks",
+      "minecraft:grove",
       "minecraft:frozen_river",
-      "minecraft:snowy_beach",
       "minecraft:frozen_ocean",
       "minecraft:deep_frozen_ocean",
-      "minecraft:grove"
+      "minecraft:snowy_beach"
     ]
   }
 }
